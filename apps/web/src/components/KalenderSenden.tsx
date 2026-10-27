@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useKalenderSendenStand, useKalenderSenden, useOffeneAenderungen,
-         useAenderungenVerwerfen, type KalenderSenden as Senden,
-         type OffenerTag } from '../lib/queries/rates.js'
+         useAenderungenVerwerfen, useKonflikteEntscheiden, type KalenderSenden as Senden,
+         type KalenderWerte, type OffenerTag } from '../lib/queries/rates.js'
 import { useT, useLocale, formatDate, intlTag, geldFormatierer,
          type Locale } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -95,6 +95,9 @@ export function KalenderSenden(
 
       {senden.isError && <Fehler error={senden.error} />}
       {stand.isError && <Fehler error={stand.error} />}
+      {push !== null && push.conflicts !== null && push.conflicts.length > 0 && (
+        <Konflikte propertyId={propertyId} push={push} />
+      )}
       {stand.data !== undefined && (
         <Zustand push={push} lastSentAt={stand.data.lastSentAt} locale={locale} />
       )}
@@ -222,6 +225,125 @@ export function zusammenfassen(tage: readonly OffenerTag[]): Gruppe[] {
     alle.push(neu)
   }
   return alle.sort((a, b) => a.von.localeCompare(b.von) || a.ratePlanCode.localeCompare(b.ratePlanCode))
+}
+
+/**
+ * Im Channel Manager wurde parallel etwas geaendert (Migration 0218).
+ *
+ * Sven, 27.10.2026: "Das muss staygrid dann pro Tag anzeigen und warnen.
+ * Sonst aendern wir veraltete Preise." Je Tag drei Staende -- zuletzt
+ * abgeglichen, hier, jetzt drueben -- und die Wahl, welcher gilt.
+ * Vorbelegt ist nichts: eine Vorauswahl wuerde durchgeklickt, und genau
+ * gegen das stille Ueberschreiben steht diese Pruefung.
+ */
+function Konflikte(
+  { propertyId, push }: { propertyId: number; push: Senden }
+): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const entscheiden = useKonflikteEntscheiden(propertyId)
+  const konflikte = push.conflicts ?? []
+  const [wahl, setWahl] = useState<Record<string, 'mine' | 'channel'>>({})
+  const geld = geldFormatierer(locale)
+  const schluessel = (k: { ratePlanCode: string; date: string }): string =>
+    `${k.ratePlanCode}|${k.date}`
+  const alle = (take: 'mine' | 'channel'): void =>
+    setWahl(Object.fromEntries(konflikte.map(k => [schluessel(k), take])))
+  const fertig = konflikte.every(k => wahl[schluessel(k)] !== undefined)
+
+  /** Ein Stand in einer Zeile; nur, was gesetzt ist. */
+  const zeigen = (w: Partial<KalenderWerte> | null): string => {
+    if (w === null) return t('rate.push.neverSent')
+    const teile: string[] = []
+    if (w.priceCent != null) teile.push(w.priceCent.map(c => geld.format(c / 100)).join(' / '))
+    if (w.minLos != null) teile.push(`${t('rate.minLos')} ${w.minLos}`)
+    if (w.maxLos != null) teile.push(`${t('rate.maxLos')} ${w.maxLos}`)
+    if (w.closed === true) teile.push(t('rate.closed'))
+    if (w.closedToArrival === true) teile.push(t('rate.cta'))
+    if (w.closedToDeparture === true) teile.push(t('rate.ctd'))
+    return teile.length === 0 ? '—' : teile.join(' · ')
+  }
+  const auswahl = 'rounded-sm border px-2 py-0.5 text-xs'
+
+  return (
+    <div className="space-y-2 rounded-sm border border-amber-300 bg-amber-50 p-3 text-sm"
+         role="alert">
+      <div>
+        <div className="font-medium text-amber-900">{t('rate.push.conflictTitle')}</div>
+        <p className="text-amber-900">{t('rate.push.conflictIntro', { n: konflikte.length })}</p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" className="underline" onClick={() => alle('channel')}>
+          {t('rate.push.allChannel')}
+        </button>
+        <button type="button" className="underline" onClick={() => alle('mine')}>
+          {t('rate.push.allMine')}
+        </button>
+      </div>
+      <div className="max-h-96 overflow-auto rounded-sm border border-neutral-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
+            <tr>
+              <th className="px-2 py-1 text-start font-normal">{t('rate.plan')}</th>
+              <th className="px-2 py-1 text-start font-normal">{t('common.date')}</th>
+              <th className="px-2 py-1 text-start font-normal">{t('rate.push.colSent')}</th>
+              <th className="px-2 py-1 text-start font-normal">{t('rate.push.colMine')}</th>
+              <th className="px-2 py-1 text-start font-normal">{t('rate.push.colChannel')}</th>
+              <th className="px-2 py-1" />
+            </tr>
+          </thead>
+          <tbody>
+            {konflikte.map(k => {
+              const w = wahl[schluessel(k)]
+              const setzen = (take: 'mine' | 'channel'): void =>
+                setWahl(v => ({ ...v, [schluessel(k)]: take }))
+              return (
+                <tr key={schluessel(k)} className="border-t border-neutral-100 align-top">
+                  <td className="px-2 py-1">{k.ratePlanCode}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">{formatDate(k.date, locale)}</td>
+                  <td className="px-2 py-1 tabular-nums text-neutral-500">{zeigen(k.sent)}</td>
+                  <td className="px-2 py-1 tabular-nums">{zeigen(k.local)}</td>
+                  <td className="px-2 py-1 tabular-nums font-medium text-amber-900">
+                    {zeigen(k.channel)}
+                  </td>
+                  <td className="px-2 py-1">
+                    <div className="flex gap-1">
+                      <button type="button" aria-pressed={w === 'channel'}
+                              className={`${auswahl} ${w === 'channel'
+                                ? 'border-neutral-900 bg-neutral-900 text-white'
+                                : 'border-neutral-300 bg-white'}`}
+                              onClick={() => setzen('channel')}>
+                        {t('rate.push.takeChannel')}
+                      </button>
+                      <button type="button" aria-pressed={w === 'mine'}
+                              className={`${auswahl} ${w === 'mine'
+                                ? 'border-neutral-900 bg-neutral-900 text-white'
+                                : 'border-neutral-300 bg-white'}`}
+                              onClick={() => setzen('mine')}>
+                        {t('rate.push.takeMine')}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {entscheiden.isError && <Fehler error={entscheiden.error} />}
+      <button type="button"
+              disabled={!online || !fertig || entscheiden.isPending}
+              onClick={() => entscheiden.mutate({
+                pushRef: push.pushRef,
+                decisions: konflikte.map(k => ({ ratePlanCode: k.ratePlanCode, date: k.date,
+                                                 take: wahl[schluessel(k)]! })) })}
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                         disabled:opacity-40">
+        {t('rate.push.resolve')}
+      </button>
+    </div>
+  )
 }
 
 function Zustand(
