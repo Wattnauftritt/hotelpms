@@ -179,7 +179,7 @@ export function kanalRefPruefen(roh: string): string {
   return roh
 }
 
-const PORTAL_NUMMER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+export const PORTAL_NUMMER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 /**
  * Nummer der Buchung beim Portal (0215). Dieselbe Form wie die CHECK-Regel

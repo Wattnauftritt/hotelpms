@@ -233,3 +233,25 @@ describe('Nachrichten aus der Gaestemappe (0153)', () => {
       { reservation_id: neu.reservationId, message: 'Bitte Herrn Meier anrufen' }])
   })
 })
+
+describe('Meldescheine vom festen Link (0216)', () => {
+  it('verwirft nicht zugeordnete sieben Tage nach dem Anreisetag', async () => {
+    for (const tage of [8, 7, 0]) {
+      await owner.query(
+        `INSERT INTO checkin_portal_submission
+                (property_id, booking_number, arrival, payload_enc, last_name)
+         VALUES ($1, $2, current_date - $3::int, '\\x00'::bytea, 'Jansen')`,
+        [fx.propertyId, `N${tage}`, tage])
+    }
+    await owner.query(
+      `INSERT INTO checkin_portal_origin (property_id, origin_hash, window_start)
+       VALUES ($1, 'alt', now() - interval '2 days'), ($1, 'neu', now())`, [fx.propertyId])
+    const c = await owner.connect()
+    try { await purgeExpired(c) } finally { c.release() }
+    const s = await owner.query<{ booking_number: string }>(
+      `SELECT booking_number FROM checkin_portal_submission ORDER BY booking_number`)
+    expect(s.rows.map(r => r.booking_number)).toEqual(['N0', 'N7'])
+    const o = await owner.query<{ origin_hash: string }>(`SELECT origin_hash FROM checkin_portal_origin`)
+    expect(o.rows.map(r => r.origin_hash)).toEqual(['neu'])
+  })
+})

@@ -264,6 +264,20 @@ Antworten auf ungültige Links: 404 (unbekannt oder verstümmelt), 410 mit `chec
 3. **Das Zeichenfeld traf den Finger nicht**, sobald es breiter angezeigt wurde als seine Auflösung: die Koordinaten waren nicht umgerechnet. Am Tresen kaum aufgefallen, an einem Terminal nicht zu übersehen. Das Feld liegt jetzt einmal in `components/Unterschriftsfeld.tsx`.
 4. **Nachträglich unterschreiben hatte keine Maske** (Dokument 16, „Was der Oberfläche noch fehlt"); jetzt in der Check-in-Maske, wo die offene Unterschrift ohnehin auffällt.
 
+## 9a. Fester Link je Haus für Gäste von Booking.com (Migration 0216)
+
+**Anlass (Sven, 27.10.2026).** Booking.com stellt die Einladung an seine Weiterleitungsadressen (`…@guest.booking.com`) nicht zu, auch nicht mit der Zwischenseite vor dem Formular (#384); eine Mail ohne Link kommt an. Gäste von Booking.com bekommen deshalb über eine **Nachrichtenvorlage von Booking.com** einen festen Link je Haus, `/meldeschein/<Kennung>`. Die Kennung steht im Pfad, nicht im Fragment: sie ist nicht geheim, und Booking.com gibt genau diese Adresse frei. Die Einstellung des Online-Check-ins zeigt sie zum Kopieren.
+
+**Ausweisen mit Buchungsnummer und Anreisetag**, nichts sonst. Den Nachnamen als drittes Merkmal hat Sven verworfen: in StayGrid kann er falsch stehen, die Nummer stimmt immer. Damit zwei Merkmale genügen, **zeigt die Seite nichts**: keinen Namen, keinen Zeitraum, und die Antwort auf die Abgabe ist immer dieselbe, ob es die Buchung gibt oder nicht. Gelesen werden kann über den Link nichts; schlimmstenfalls legt jemand einen falschen Schein an eine fremde Buchung, und die Rezeption sieht ihn beim Check-in.
+
+**Abgabe auch ohne passende Buchung.** Kennt StayGrid die Nummer noch nicht, liegt der Schein verschlüsselt in `checkin_portal_submission` (eigener Zweck in der Schlüsselableitung, nur der Nachname im Klartext für die Liste der Rezeption). Zugeordnet wird über Portalnummer (`booking.channel_booking_number`, 0215) **und** genauen Anreisetag: sofort bei der Abgabe, oder sobald das Adminpanel die Nummer meldet (Kontaktabgleich oder Gästehaus-Push). Bei mehreren Zimmern bekommt die erste Reservierung ohne Meldeschein ihn. Hat jede schon einen, oder passt der Schein nicht mehr (eine Hausbedingung kam dazu), bleibt er mit Grund liegen. Zugeordnet läuft er durch `meldescheinEinreichen`, denselben Weg wie Mail-Link und Terminal: keine Unterschrift von zu Hause, Ankunftszeit und Telefon verlangt.
+
+**Sieben Tage nach dem angegebenen Anreisetag** verwirft der Pflegejob, was nicht zugeordnet wurde (Sven). Bis dahin hat die Rezeption den Gast gesehen; danach wäre es eine Sammlung von Ausweisdaten ohne Aufenthalt.
+
+**Grenzen.** Die Seite ist anonym und fällt unter die allgemeine Grenze je Herkunft. Dazu zwanzig Abgaben je Herkunft und Tag (nur der Hash der Adresse steht in der Datenbank) und fünf wartende je Nummer.
+
+**Noch offen:** die Liste der wartenden Scheine an der Rezeption mit Zuordnung von Hand. Holt StayGrid Buchungen selbst bei einem Channel Manager ab (Worker), ordnet es dort noch nicht zu; das Adminpanel meldet die Nummer heute ohnehin über die Schnittstelle.
+
 ---
 
 ## 10. Offen

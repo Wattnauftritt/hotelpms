@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { DomainError, isChannelRelayAddress, isSendableAddress, portalNummerPruefen }
   from '@hotelpms/domain'
 import { istLand } from '@hotelpms/contracts'
+import { abgabenZurNummer } from './meldescheinPortal.js'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -363,6 +364,11 @@ export function guestContactRoutes(app: FastifyInstance): void {
           .some(f => eingabe[f] !== undefined)
         const kontakt = eingabe.source === null || !mitKontakt
           ? null : await kontaktSchreiben(client, res, eingabe, eingabe.source, principal)
+        // Nach dem Kontakt: erst danach hat eine neue Reservierung ihren
+        // Hauptgast, und ohne ihn wartet ein Meldeschein weiter (0216).
+        if (eingabe.channelBookingNumber) {
+          await abgabenZurNummer(client, Number(res.property_id), eingabe.channelBookingNumber)
+        }
 
         return {
           reservationRef,

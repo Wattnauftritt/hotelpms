@@ -58,7 +58,8 @@ describe('Terminalseite aus der Adresse', () => {
    * Gastdaten ueber den Auftrag hinaus (CLAUDE.md).
    */
   it('meldet auf den Gastseiten keinen Service Worker an', () => {
-    for (const einstieg of ['../gast/terminal.tsx', '../gast/checkin.tsx']) {
+    for (const einstieg of ['../gast/terminal.tsx', '../gast/checkin.tsx',
+                            '../gast/meldeschein.tsx', '../routes/MeldescheinPortal.tsx']) {
       const c = code(einstieg)
       expect(c, einstieg).not.toMatch(/serviceWorker|lib\/pwa/)
       expect(c, einstieg).not.toMatch(/@tanstack|QueryClient/)

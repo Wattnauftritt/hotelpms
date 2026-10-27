@@ -4,7 +4,7 @@ import { createCheckinToken, renderCheckinInvitationEmail, emailLanguage,
          renderCheckinInvitationTestEmail, isSendableAddress, isIsoDate,
          requiresRegistrationSignature, type CheckinInvitationData,
          type EmailLanguage, type RenderedEmail } from '@hotelpms/domain'
-import { checkinLink, istLand, istUnterschriftSvg,
+import { checkinLink, meldescheinPortalLink, istLand, istUnterschriftSvg,
          MAX_MITREISENDE, type CheckinFormView, type CheckinSubmitted,
          type CheckinSettings, type CheckinLink,
          type CheckinMailPreview } from '@hotelpms/contracts'
@@ -63,7 +63,7 @@ function nichtSpeichern(reply: FastifyReply): void {
   reply.header('cache-control', 'no-store')
 }
 
-interface ReservierungZumLink {
+export interface ReservierungZumLink {
   id: number; property_id: number; account_id: number
   arrival: string; departure: string; primary_guest_id: number
   property_name: string; first_name: string | null; last_name: string
@@ -76,6 +76,20 @@ interface ReservierungZumLink {
 async function reservierungZumLink(
   client: PoolClient, k: CheckinKontext
 ): Promise<ReservierungZumLink> {
+  const r = await reservierungLaden(client, k.reservationId)
+  // Kann nur fehlen, wenn der Link zwischen Ausgabe und Einloesen seinen Gast
+  // verloren hat; checkin_token_open hat das schon abgefangen.
+  if (r === null) throw Errors.gone('checkin.reservationClosed')
+  return r
+}
+
+/**
+ * Eine Reservierung mit allem, was das Einreichen braucht. Null ohne
+ * Hauptgast: ohne ihn gibt es niemanden, dessen Meldeschein erfasst wuerde.
+ */
+export async function reservierungLaden(
+  client: PoolClient, reservationId: number
+): Promise<ReservierungZumLink | null> {
   const { rows } = await client.query<ReservierungZumLink>(
     `SELECT r.id, r.property_id, p.account_id, r.arrival::text, r.departure::text,
             r.primary_guest_id, p.name AS property_name,
@@ -86,11 +100,8 @@ async function reservierungZumLink(
        JOIN guest g    ON g.id = r.primary_guest_id
        LEFT JOIN registration reg
               ON reg.reservation_id = r.id AND reg.group_registration_id IS NULL
-      WHERE r.id = $1`, [k.reservationId])
-  // Kann nur fehlen, wenn der Link zwischen Ausgabe und Einloesen seinen Gast
-  // verloren hat; checkin_token_open hat das schon abgefangen.
-  if (rows.length === 0) throw Errors.gone('checkin.reservationClosed')
-  return rows[0]!
+      WHERE r.id = $1`, [reservationId])
+  return rows[0] ?? null
 }
 
 function zustand(r: ReservierungZumLink): CheckinFormView['state'] {
@@ -118,7 +129,7 @@ interface Person {
   /** Nur der Form nach geprueft; ob das Haus den Grund anbietet, im Handler. */
   taxExemption?: { reason: string; proof: string | null }
 }
-interface Einreichung {
+export interface Einreichung {
   guest: Person & {
     address: { line1: string; postalCode: string; city: string; country: string }
     idDocumentType?: 'passport' | 'id_card' | 'other'
@@ -177,7 +188,9 @@ function istObjekt(v: unknown): v is Record<string, unknown> {
  * vor. Es gibt kein Feld dafuer (§ 30 BMG erlaubt die Nummer, verbietet die
  * Kopie), und das soll die Antwort sagen.
  */
-function pruefe(body: unknown, heute: string, kanal: CheckinKontext['channel']): Einreichung {
+export function pruefe(
+  body: unknown, heute: string, kanal: CheckinKontext['channel']
+): Einreichung {
   const f: Record<string, Meldung[]> = {}
   const fehlt = (k: string, m: Meldung = 'field.required'): void => {
     (f[k] ??= []).push(m)
@@ -351,7 +364,7 @@ function pruefe(body: unknown, heute: string, kanal: CheckinKontext['channel']):
 interface GrundImHaus { id: number; code: string; label: string; needs_proof: boolean }
 
 /** Die Gruende, die das Haus gerade anbietet. Ein Aufruf, nicht einer je Person. */
-async function befreiungsgruende(client: PoolClient, propertyId: number): Promise<GrundImHaus[]> {
+export async function befreiungsgruende(client: PoolClient, propertyId: number): Promise<GrundImHaus[]> {
   const { rows } = await client.query<GrundImHaus>(
     `SELECT id, code, label, needs_proof FROM city_tax_exemption_reason
       WHERE property_id = $1 AND active ORDER BY sort, label`, [propertyId])
@@ -359,7 +372,7 @@ async function befreiungsgruende(client: PoolClient, propertyId: number): Promis
 }
 
 /** Meldet das Haus an AVS (Migration 0090)? */
-async function meldetAnAvs(client: PoolClient, propertyId: number): Promise<boolean> {
+export async function meldetAnAvs(client: PoolClient, propertyId: number): Promise<boolean> {
   const r = await client.query(`SELECT 1 FROM avs_setting WHERE property_id = $1`, [propertyId])
   return (r.rowCount ?? 0) > 0
 }
@@ -422,6 +435,92 @@ function pruefeGegenHaus(
       return { reasonId: Number(g.id), proof: g.needs_proof ? p.taxExemption.proof : null }
     }
   }
+}
+
+/**
+ * Einen geprueften Meldeschein an eine Reservierung schreiben: Profil des
+ * Hauptgastes, Mitreisende, Meldeschein, Hausbedingungen. Derselbe Weg fuer
+ * den Link aus der Mail, das Terminal und den festen Link je Haus (0216),
+ * damit keiner davon eine Regel vergisst.
+ *
+ * Wirft vor dem ersten Schreiben, wenn der Schein nicht zum Haus passt
+ * (`pruefeGegenHaus`); der Aufrufer laeuft in einer Transaktion.
+ */
+export async function meldescheinEinreichen(
+  client: PoolClient, r: ReservierungZumLink, e: Einreichung,
+  opts: { hier: boolean; quelle: 'terminal' | 'online' }
+): Promise<{ signaturePending: boolean }> {
+  if (opts.hier && e.signatureSvg !== undefined && !istUnterschriftSvg(e.signatureSvg)) {
+    throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
+  }
+  const offen = await offeneBedingungen(client, r)
+  const haus = pruefeGegenHaus(e, await befreiungsgruende(client, r.property_id), offen)
+
+  /*
+   * Ins Profil des Gastes, auf demselben Weg wie die Rezeption. E-Mail
+   * und Telefon bleiben unberuehrt: an die Adresse ging der Link, und
+   * ueber eine Seite ohne Anmeldung soll sie niemand umbiegen koennen.
+   * Die Telefonnummer aus dem Formular geht an den Meldeschein; ins
+   * Profil nur, wo dort gar keine steht -- fuellen ist kein Umbiegen.
+   */
+  await gastAendern(client, r.primary_guest_id, {
+    lastName: e.guest.lastName, firstName: e.guest.firstName,
+    birthDate: e.guest.birthDate, nationality: e.guest.nationality,
+    addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
+    city: e.guest.address.city, country: e.guest.address.country,
+    idDocumentType: e.guest.idDocumentType,
+    idDocumentNumber: e.guest.idDocumentNumber
+  })
+  if (e.phone !== null) {
+    await client.query(
+      `UPDATE guest SET phone = $2
+        WHERE id = $1 AND (phone IS NULL OR btrim(phone) = '')`,
+      [r.primary_guest_id, e.phone])
+  }
+
+  // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
+  const mitreisende: number[] = []
+  const befreiungen = new Map<number, Befreiung>()
+  const hauptBefreiung = haus.befreiung(e.guest)
+  if (hauptBefreiung) befreiungen.set(Number(r.primary_guest_id), hauptBefreiung)
+  for (const c of e.companions) {
+    const neu = await gastAnlegen(client, r.account_id, {
+      lastName: c.lastName, firstName: c.firstName,
+      birthDate: c.birthDate, nationality: c.nationality,
+      language: r.language })
+    mitreisende.push(neu.id)
+    const b = haus.befreiung(c)
+    if (b) befreiungen.set(Number(neu.id), b)
+  }
+
+  const ergebnis = await erfasseMeldeschein(client, {
+    propertyId: r.property_id, reservationId: r.id,
+    arrival: r.arrival, departure: r.departure,
+    primaryGuestId: r.primary_guest_id, mitreisende,
+    unterschrift: opts.hier
+      ? { art: 'jetzt', svg: e.signatureSvg }
+      : { art: 'amAnreisetag' },
+    quelle: opts.quelle,
+    befreiungen,
+    // Nur wo das Haus an AVS meldet; sonst ginge die Einwilligung ins Leere.
+    digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id),
+    ankunft: e.expectedArrival,
+    telefon: e.phone
+  })
+
+  /*
+   * Die Hausbedingungen ueber denselben Weg wie Tresen und Terminal
+   * (`platform/hausbedingungen.ts`): je Fassung eine Zustimmung, die
+   * Unterschrift nur, wo die Fassung sie verlangt. Ohne Benutzer --
+   * zugestimmt hat der Gast selbst.
+   */
+  for (const b of offen) {
+    await stimmeBedingungZu(client, {
+      reservationId: r.id, propertyId: r.property_id,
+      primaryGuestId: r.primary_guest_id, termsId: await termsId(client, b.termsRef),
+      signatureSvg: e.termsSignatureSvg, createdBy: null })
+  }
+  return ergebnis
 }
 
 // ------------------------------------------------------------------ Rezeption
@@ -571,78 +670,9 @@ export function checkinRoutes(app: FastifyInstance): void {
         const r = await reservierungZumLink(client, k)
         if (r.reg_id !== null) throw Errors.conflict('checkin.alreadyDone')
 
-        const hier = unterschriftHier(k, r.arrival)
-        if (hier && e.signatureSvg !== undefined && !istUnterschriftSvg(e.signatureSvg)) {
-          throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
-        }
-        const offen = await offeneBedingungen(client, r)
-        const haus = pruefeGegenHaus(e, await befreiungsgruende(client, r.property_id), offen)
-
-        /*
-         * Ins Profil des Gastes, auf demselben Weg wie die Rezeption. E-Mail
-         * und Telefon bleiben unberuehrt: an die Adresse ging der Link, und
-         * ueber eine Seite ohne Anmeldung soll sie niemand umbiegen koennen.
-         * Die Telefonnummer aus dem Formular geht an den Meldeschein; ins
-         * Profil nur, wo dort gar keine steht -- fuellen ist kein Umbiegen.
-         */
-        await gastAendern(client, r.primary_guest_id, {
-          lastName: e.guest.lastName, firstName: e.guest.firstName,
-          birthDate: e.guest.birthDate, nationality: e.guest.nationality,
-          addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
-          city: e.guest.address.city, country: e.guest.address.country,
-          idDocumentType: e.guest.idDocumentType,
-          idDocumentNumber: e.guest.idDocumentNumber
-        })
-        if (e.phone !== null) {
-          await client.query(
-            `UPDATE guest SET phone = $2
-              WHERE id = $1 AND (phone IS NULL OR btrim(phone) = '')`,
-            [r.primary_guest_id, e.phone])
-        }
-
-        // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
-        const mitreisende: number[] = []
-        const befreiungen = new Map<number, Befreiung>()
-        const hauptBefreiung = haus.befreiung(e.guest)
-        if (hauptBefreiung) befreiungen.set(Number(r.primary_guest_id), hauptBefreiung)
-        for (const c of e.companions) {
-          const neu = await gastAnlegen(client, r.account_id, {
-            lastName: c.lastName, firstName: c.firstName,
-            birthDate: c.birthDate, nationality: c.nationality,
-            language: r.language })
-          mitreisende.push(neu.id)
-          const b = haus.befreiung(c)
-          if (b) befreiungen.set(Number(neu.id), b)
-        }
-
-        const ergebnis = await erfasseMeldeschein(client, {
-          propertyId: r.property_id, reservationId: r.id,
-          arrival: r.arrival, departure: r.departure,
-          primaryGuestId: r.primary_guest_id, mitreisende,
-          unterschrift: hier
-            ? { art: 'jetzt', svg: e.signatureSvg }
-            : { art: 'amAnreisetag' },
-          quelle: k.channel === 'terminal' ? 'terminal' : 'online',
-          befreiungen,
-          // Nur wo das Haus an AVS meldet; sonst ginge die Einwilligung ins Leere.
-          digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id),
-          ankunft: e.expectedArrival,
-          telefon: e.phone
-        })
-
-        /*
-         * Die Hausbedingungen ueber denselben Weg wie Tresen und Terminal
-         * (`platform/hausbedingungen.ts`): je Fassung eine Zustimmung, die
-         * Unterschrift nur, wo die Fassung sie verlangt. Ohne Benutzer --
-         * zugestimmt hat der Gast selbst.
-         */
-        for (const b of offen) {
-          await stimmeBedingungZu(client, {
-            reservationId: r.id, propertyId: r.property_id,
-            primaryGuestId: r.primary_guest_id, termsId: await termsId(client, b.termsRef),
-            signatureSvg: e.termsSignatureSvg, createdBy: null })
-        }
-
+        const ergebnis = await meldescheinEinreichen(client, r, e, {
+          hier: unterschriftHier(k, r.arrival),
+          quelle: k.channel === 'terminal' ? 'terminal' : 'online' })
         await client.query(
           `UPDATE checkin_token SET completed_at = now() WHERE id = $1`, [k.tokenId])
 
@@ -789,11 +819,16 @@ export function checkinRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
       return tx(req.pool, req, async (client): Promise<CheckinSettings> => {
-        const { rows } = await client.query<{ enabled: boolean; days_before: number }>(
-          `SELECT enabled, days_before FROM property_checkin_setting WHERE property_id = $1`,
+        const { rows } = await client.query<{
+          enabled: boolean | null; days_before: number | null; portal_ref: string }>(
+          `SELECT s.enabled, s.days_before, p.checkin_portal_ref AS portal_ref
+             FROM property p
+             LEFT JOIN property_checkin_setting s ON s.property_id = p.id
+            WHERE p.id = $1`,
           [Number(propertyId)])
         // Kein 404: "noch nie eingestellt" ist der Ausgangszustand jedes Hauses.
-        return { enabled: rows[0]?.enabled ?? false, daysBefore: rows[0]?.days_before ?? 3 }
+        return { enabled: rows[0]?.enabled ?? false, daysBefore: rows[0]?.days_before ?? 3,
+                 portalLink: meldescheinPortalLink(config.publicAppUrl, rows[0]!.portal_ref) }
       })
     }
   })
@@ -821,7 +856,10 @@ export function checkinRoutes(app: FastifyInstance): void {
              SET enabled = EXCLUDED.enabled, days_before = EXCLUDED.days_before,
                  updated_by = EXCLUDED.updated_by, updated_at = now()`,
           [Number(propertyId), b.enabled, tage, principal.userId])
-        return { enabled: b.enabled as boolean, daysBefore: tage }
+        const ref = await client.query<{ ref: string }>(
+          `SELECT checkin_portal_ref AS ref FROM property WHERE id = $1`, [Number(propertyId)])
+        return { enabled: b.enabled as boolean, daysBefore: tage,
+                 portalLink: meldescheinPortalLink(config.publicAppUrl, ref.rows[0]!.ref) }
       })
     }
   })

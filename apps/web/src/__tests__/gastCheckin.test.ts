@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkinLink, checkinTokenAusFragment, istAuslaendisch, istUnterschriftSvg }
-  from '@hotelpms/contracts'
+import { checkinLink, checkinTokenAusFragment, istAuslaendisch, istUnterschriftSvg,
+         meldescheinPortalLink, meldescheinPortalAusPfad } from '@hotelpms/contracts'
 import { checkinAusAdresse } from '../routes/GastCheckin.tsx'
-import { istCheckinAdresse } from '../gast/adresse.js'
+import { istCheckinAdresse, istMeldescheinPortalAdresse } from '../gast/adresse.js'
 
 /**
  * Die Gastseite des Online-Check-ins (Dokument 30).
@@ -140,5 +140,36 @@ describe('Per Mail erst nach dem Klick', () => {
 
   it('laedt auf der Vorschaltseite nichts', () => {
     expect(rumpf('Vorschalt')).not.toMatch(/api\.|fetch\(/)
+  })
+})
+
+/*
+ * Der feste Link je Haus fuer Gaeste von Booking.com (0216): eigene Seite,
+ * dasselbe Formular, nichts im Browser.
+ */
+describe('Fester Link je Haus', () => {
+  const seite = quelle('routes/MeldescheinPortal.tsx')
+
+  it('steht im Pfad, damit Booking.com genau diese Adresse freigeben kann', () => {
+    const link = meldescheinPortalLink('https://app.staygrid.test/', '24N6KVPN8B7DKBZM')
+    expect(link).toBe('https://app.staygrid.test/meldeschein/24N6KVPN8B7DKBZM')
+    expect(meldescheinPortalAusPfad(new URL(link).pathname)).toBe('24N6KVPN8B7DKBZM')
+    expect(istMeldescheinPortalAdresse('/meldeschein/24N6KVPN8B7DKBZM/')).toBe(true)
+    expect(istMeldescheinPortalAdresse('/meldeschein')).toBe(false)
+    expect(istMeldescheinPortalAdresse('/meldeschein/kurz')).toBe(false)
+    expect(istMeldescheinPortalAdresse('/meldeschein/24n6kvpn8b7dkbzm')).toBe(false)
+  })
+
+  it('hat einen eigenen Einstieg vor der Rezeption', () => {
+    const boot = quelle('boot.ts')
+    const gast = boot.indexOf("import('./gast/meldeschein.tsx')")
+    expect(gast).toBeGreaterThan(0)
+    expect(gast).toBeLessThan(boot.indexOf("import('./main.tsx')"))
+  })
+
+  it('benutzt dasselbe Formular und legt nichts im Browser ab', () => {
+    expect(seite).toMatch(/<Formular /)
+    const code = seite.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    expect(code).not.toMatch(/localStorage|sessionStorage|type="file"/)
   })
 })
