@@ -309,6 +309,13 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
             : <span className={`text-xs px-1 rounded-sm ${kanalFarbe(r.channelCode)}`}>
                 {r.channelCode}
               </span>}
+          {/* Die Nummer beim Portal (0215), wie sie im Extranet steht: mit ihr
+              weist sich der Gast am festen Link zum Meldeschein aus. */}
+          {r.channelBookingNumber !== null && (
+            <span className="ml-2 tabular-nums text-xs text-neutral-600">
+              {t('reg.portal.number', { nummer: r.channelBookingNumber })}
+            </span>
+          )}
         </Feld>
         <Feld label={t('plan.source')}>{r.source}</Feld>
       </section>
