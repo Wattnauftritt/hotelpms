@@ -106,6 +106,28 @@ describe('Geburtsdatum, wie Menschen es schreiben', () => {
   })
 })
 
+describe('Anreisetag im Portalformular', () => {
+  const heute = '2026-10-27'
+  const lesen = (t: string): string => datumLesen(t, heute, 'anreise')
+
+  /** Der Gast von CHECK24 (Anreise 28.10.2026) kam nicht durch: das Feld las morgen als ''. */
+  it('nimmt einen Tag nach heute', () => {
+    for (const t of ['28.10.2026', '28.10.26', '28102026', '2026-10-28']) {
+      expect(lesen(t), t).toBe('2026-10-28')
+    }
+    expect(lesen('03.01.27')).toBe('2027-01-03')
+  })
+
+  it('weist weiter Unmoegliches ab', () => {
+    expect(lesen('31.02.2027')).toBe('')
+    expect(lesen('28.10.')).toBe('')
+  })
+
+  it('haengt am Portalformular als Anreise, nicht als Geburtsdatum', () => {
+    expect(code('../routes/MeldescheinPortal.tsx')).toMatch(/<Datumsfeld[^>]*art="anreise"/)
+  })
+})
+
 describe('An der Terminalseite', () => {
   it('haengt einmal an der Seite, nicht am einzelnen Feld', () => {
     expect(code('../routes/Terminal.tsx')).toContain('<Bildschirmtastatur />')

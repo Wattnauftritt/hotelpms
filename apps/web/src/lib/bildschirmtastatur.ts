@@ -139,8 +139,15 @@ export function startEbene(eingabeModus: string): Ebene {
  * **Zwei Ziffern Jahr** liegen in der Vergangenheit: es ist ein
  * Geburtsdatum. `85` ist 1985, `12` ist 2012, solange 2012 nicht nach
  * `heute` liegt. Ein Datum nach `heute` ist keins.
+ *
+ * **Ein Anreisetag** (`art = 'anreise'`) liegt dagegen meist in der
+ * Zukunft: zwei Ziffern Jahr sind 20xx, und ein Datum nach `heute` gilt.
+ * Ob es in einem erlaubten Zeitraum liegt, prueft der Server. Das
+ * Portalformular hat zuerst die Regel fuers Geburtsdatum mitbekommen und
+ * damit jeden Anreisetag ab morgen als unlesbar abgewiesen -- der Gast sah
+ * ein Datum im Feld und die Bitte, ein Datum einzugeben (27.10.2026).
  */
-export function datumLesen(text: string, heute: string): string {
+export function datumLesen(text: string, heute: string, art: DatumArt = 'geburt'): string {
   const t = text.trim()
   let tag: string, monat: string, jahr: string
   let m: RegExpExecArray | null
@@ -155,15 +162,18 @@ export function datumLesen(text: string, heute: string): string {
   }
   const heuteJahr = Number(heute.slice(0, 4))
   let j = Number(jahr)
-  if (jahr.length === 2) j = 2000 + j <= heuteJahr ? 2000 + j : 1900 + j
+  if (jahr.length === 2) j = art === 'anreise' || 2000 + j <= heuteJahr ? 2000 + j : 1900 + j
   const mo = Number(monat)
   const ta = Number(tag)
   if (j < 1900) return ''
   const d = new Date(Date.UTC(j, mo - 1, ta))
   if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== ta) return ''
   const iso = `${String(j)}-${String(mo).padStart(2, '0')}-${String(ta).padStart(2, '0')}`
-  return iso > heute ? '' : iso
+  return art === 'geburt' && iso > heute ? '' : iso
 }
+
+/** Wozu ein getipptes Datum dient: das entscheidet, was es heissen darf. */
+export type DatumArt = 'geburt' | 'anreise'
 
 /**
  * Waehrend des Tippens die Punkte selbst setzen: `03111985` wird beim

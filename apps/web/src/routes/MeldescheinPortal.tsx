@@ -116,7 +116,7 @@ function Buchung({ f, nummer, setNummer, anreise, setAnreise }: {
           <span className="text-xs text-neutral-500">{t('gastCheckin.portal.bookingNumberHint')}</span>
         </Feld>
         <Feld label={t('gastCheckin.portal.arrival')} fehler={f.felder.get('arrival')} gross={false}>
-          <Datumsfeld value={anreise} onChange={setAnreise}
+          <Datumsfeld value={anreise} onChange={setAnreise} art="anreise"
                       className={`${f.eingabe} ${f.rahmen('arrival')}`} />
         </Feld>
       </div>
