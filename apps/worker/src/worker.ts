@@ -11,7 +11,7 @@ import { ensureAuditPartitions, dropOldAuditPartitions,
   from './jobs/maintenance.js'
 import { TickBreaker } from './jobs/breaker.js'
 import { renderPendingInvoices } from '@hotelpms/beleg'
-import { deliverWebhooks } from './jobs/webhookDelivery.js'
+import { deliverWebhooks, propertiesWithDueWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { checkEmailDeliveries } from './jobs/emailDeliveryStatus.js'
@@ -590,6 +590,39 @@ async function platformEmailsTakt(): Promise<void> {
 }
 
 /*
+ * Ereignisse haben ihren eigenen, kurzen Takt. Im Fuenf-Minuten-Tick wartete
+ * ein Ereignis bis zu fuenf Minuten, und laenger, wenn vor dem Haus der
+ * Nachtlauf anderer Haeuser lief. Fuer eine Reservierung ist das hinnehmbar,
+ * fuer einen Knopf nicht: "Vom Channel Manager abrufen" stand Minuten auf
+ * "Warte auf das Umsystem", bevor das Umsystem ueberhaupt davon wusste
+ * (27.10.2026). Doppelt zugestellt wird nichts: claim() sperrt mit SKIP
+ * LOCKED und setzt eine Frist, Tick und Takt duerfen sich ueberschneiden.
+ * Der Tick stellt weiter zu; faellt dieser Takt aus, kommt es spaeter an.
+ */
+const WEBHOOK_INTERVAL_MS = 15_000
+let webhooksLaeuft = false
+async function webhookTakt(): Promise<void> {
+  if (webhooksLaeuft) return
+  webhooksLaeuft = true
+  try {
+    const faellig = await propertiesWithDueWebhooks(admin)
+    if (faellig.size === 0) return
+    for (const p of await activeProperties()) {
+      if (!faellig.has(p.id)) continue
+      try {
+        await webhooks(p)
+      } catch (e) {
+        log.error({ property: p.id, err: e }, 'Zustellung der Ereignisse fehlgeschlagen')
+      }
+    }
+  } catch (e) {
+    log.error({ err: e }, 'Zustellung der Ereignisse fehlgeschlagen')
+  } finally {
+    webhooksLaeuft = false
+  }
+}
+
+/*
  * Push an das Personal (Baustein 8). Die Schluessel kommen aus der Umgebung
  * oder, ohne sie, aus der Datenbank; fehlen beide, erzeugt der Worker beim
  * Start ein Paar (0117). Die API liest den oeffentlichen von dort, den
@@ -716,6 +749,7 @@ async function main(): Promise<void> {
   const mailInterval = setInterval(() => { void platformEmailsTakt() },
     PLATFORM_EMAIL_INTERVAL_MS)
   const pushInterval = setInterval(() => { void pushTakt() }, PUSH_INTERVAL_MS)
+  const webhookInterval = setInterval(() => { void webhookTakt() }, WEBHOOK_INTERVAL_MS)
   if (kanalSchluessel === null) {
     log.warn('ID_DOCUMENT_KEY ist nicht gesetzt: kein Kanalabgleich mit Channel Managern.')
   }
@@ -726,6 +760,7 @@ async function main(): Promise<void> {
       clearInterval(interval)
       clearInterval(mailInterval)
       clearInterval(pushInterval)
+      clearInterval(webhookInterval)
       clearInterval(kanalInterval)
       void Promise.all([pool.end(), admin.end()]).then(() => process.exit(0))
     })

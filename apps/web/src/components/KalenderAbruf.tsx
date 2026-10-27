@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { useKalenderAbruf, useKalenderAnfordern, useKalenderUebernehmen,
          MAX_RASTER_TAGE, type KalenderAbruf as Abruf } from '../lib/queries/rates.js'
 import { useT, useLocale, formatDate, geldFormatierer } from '../lib/i18n/index.js'
@@ -21,8 +21,19 @@ import { Fehler } from './Shell.tsx'
  * zufaellig auf den Knopf drueckt.
  */
 
-/** So lange gilt Warten als normal; danach die Frage, ob das Umsystem laeuft. */
-const GEDULD_MS = 2 * 60_000
+/**
+ * Ab hier steht ein Satz, dass ein Jahr Minuten dauert. Vorher sieht es
+ * aus, als haenge etwas, und es wird ein zweites Mal gedrueckt -- was den
+ * ersten Abruf ersetzt und von vorn beginnen laesst.
+ */
+const GEDULD_MS = 60_000
+/**
+ * So lange ohne jedes Lebenszeichen, dann erst die Frage, ob das Umsystem
+ * laeuft. Gemessen am letzten Zwischenstand, nicht am Auftrag: bis
+ * 27.10.2026 stand die Frage nach zwei Minuten da, waehrend das Umsystem
+ * noch Block um Block holte.
+ */
+const STILL_MS = 10 * 60_000
 
 export function KalenderAbruf({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -122,15 +133,7 @@ function Stand(
 
   if (pull.status === 'superseded') return null
 
-  if (pull.status === 'requested') {
-    const lange = Date.now() - Date.parse(pull.requestedAt) > GEDULD_MS
-    return (
-      <div className="text-sm" role="status">
-        <div>{t('rate.pull.waiting')} <span className="text-neutral-500">({zeitraum})</span></div>
-        {lange && <div className="text-amber-800">{t('rate.pull.slow')}</div>}
-      </div>
-    )
-  }
+  if (pull.status === 'requested') return <Warten pull={pull} zeitraum={zeitraum} />
 
   if (pull.status === 'failed') {
     return (
@@ -226,6 +229,49 @@ function Stand(
                          disabled:opacity-40">
         {t('common.apply')}
       </button>
+    </div>
+  )
+}
+
+/**
+ * Das Warten auf das Umsystem, mit dem, was es zwischendurch meldet.
+ *
+ * Eine eigene Uhr, weil die Abfrage nur bei geaenderten Daten neu zeichnet:
+ * ohne Zwischenstand aendert sich nichts, und der Hinweis nach einer Minute
+ * erschiene nie.
+ */
+function Warten({ pull, zeitraum }: { pull: Abruf; zeitraum: string }): JSX.Element {
+  const t = useT()
+  const [jetzt, setJetzt] = useState(() => Date.now())
+  useEffect(() => {
+    const uhr = setInterval(() => { setJetzt(Date.now()) }, 5_000)
+    return () => { clearInterval(uhr) }
+  }, [])
+
+  const seitAuftrag = jetzt - Date.parse(pull.requestedAt)
+  const lebenszeichen = Math.max(Date.parse(pull.requestedAt),
+                                 pull.progress === null ? 0 : Date.parse(pull.progress.at))
+  const still = jetzt - lebenszeichen > STILL_MS
+  const p = pull.progress
+
+  return (
+    <div className="space-y-1 text-sm" role="status">
+      <div>{t('rate.pull.waiting')} <span className="text-neutral-500">({zeitraum})</span></div>
+      {p !== null && (
+        <div className="space-y-1">
+          <div className="h-1.5 w-full max-w-sm overflow-hidden rounded-sm bg-neutral-200">
+            <div className="h-full bg-neutral-700 transition-all"
+                 style={{ width: `${Math.round(100 * p.days / Math.max(p.totalDays, 1))}%` }} />
+          </div>
+          <div className="text-neutral-600 tabular-nums">
+            {t('rate.pull.progress', { done: p.days, total: p.totalDays })}
+          </div>
+        </div>
+      )}
+      {still
+        ? <div className="text-amber-800">{t('rate.pull.slow')}</div>
+        : seitAuftrag > GEDULD_MS
+          && <div className="text-neutral-600">{t('rate.pull.patience')}</div>}
     </div>
   )
 }

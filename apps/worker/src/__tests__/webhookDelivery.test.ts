@@ -6,7 +6,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty,
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
 import { webhookSignature, WEBHOOK_HEADERS, WEBHOOK_MAX_ATTEMPTS,
          parseCidrList } from '@hotelpms/domain'
-import { deliverWebhooks } from '../jobs/webhookDelivery.js'
+import { deliverWebhooks, propertiesWithDueWebhooks } from '../jobs/webhookDelivery.js'
 
 let owner: Pool
 let app: Pool
@@ -405,5 +405,22 @@ describe('Zustellung ausgehender Ereignisse', () => {
       { status: 'delivered', last_error: null },
       { status: 'failed', last_error: 'subscriptionDisabled' },
       { status: 'failed', last_error: 'subscriptionDisabled' }])
+  })
+})
+
+describe('Kurzer Webhook-Takt', () => {
+  it('nennt nur Haeuser mit faelliger Zustellung an ein aktives Abonnement', async () => {
+    expect(await propertiesWithDueWebhooks(owner)).toEqual(new Set())
+    const abo = await abonnement('https://adminpanel.example.de/webhooks')
+    await einreihen('rate.calendar_pull_requested')
+    expect(await propertiesWithDueWebhooks(owner)).toEqual(new Set([fx.propertyId]))
+
+    // Noch nicht faellig: wartet auf die naechste Wiederholung.
+    await owner.query(`UPDATE webhook_delivery SET next_attempt_at = now() + interval '1 minute'`)
+    expect(await propertiesWithDueWebhooks(owner)).toEqual(new Set())
+
+    await faelligStellen()
+    await owner.query(`UPDATE webhook_subscription SET status = 'disabled' WHERE id = $1`, [abo])
+    expect(await propertiesWithDueWebhooks(owner)).toEqual(new Set())
   })
 })

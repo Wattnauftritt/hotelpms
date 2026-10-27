@@ -99,6 +99,7 @@ const stand = async () => {
   return r.json<{
     pull: { pullRef: string; status: string; version: number; message: string | null
             delivery: Array<{ ratePlanCode: string; result: string; days: number }>
+            progress: { days: number; totalDays: number; at: string } | null
             result: { prices: number; restrictions: number } | null } | null
     preview: { priceChanges: number; restrictionChanges: number
                changes: Array<{ ratePlanCode: string; date: string
@@ -280,5 +281,35 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
       { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] }] }] })
     expect(l.statusCode).toBe(409)
     expect((await stand()).pull?.pullRef).toBe(neu)
+  })
+
+  it('zeigt den gemeldeten Zwischenstand, ohne den Balken zu kuerzen', async () => {
+    await abonnieren()
+    const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
+    expect((await stand()).pull?.progress).toBeNull()
+    const m = await maschine(['rate:channel_sync'])
+
+    expect((await liefern(m, ref, { status: 'progress', daysDone: 6 })).statusCode).toBe(200)
+    // Zwei Bloecke nebeneinander: der langsamere meldet weniger.
+    expect((await liefern(m, ref, { status: 'progress', daysDone: 3 })).statusCode).toBe(200)
+    const s = await stand()
+    expect(s.pull?.status).toBe('requested')
+    expect(s.pull?.progress).toMatchObject({ days: 6, totalDays: 10 })
+
+    // Mehr als der Zeitraum wird gekappt, Unsinn abgewiesen.
+    await liefern(m, ref, { status: 'progress', daysDone: 40 })
+    expect((await stand()).pull?.progress?.days).toBe(10)
+    expect((await liefern(m, ref, { status: 'progress', daysDone: -1 })).statusCode).toBe(422)
+    expect((await liefern(m, ref, { status: 'progress' })).statusCode).toBe(422)
+  })
+
+  it('sagt einem ersetzten Abruf per Zwischenstand, dass er aufhoeren kann', async () => {
+    await abonnieren()
+    const alt = (await anfordern()).json<{ pullRef: string }>().pullRef
+    await anfordern()
+    const m = await maschine(['rate:channel_sync'])
+    const r = await liefern(m, alt, { status: 'progress', daysDone: 2 })
+    expect(r.statusCode).toBe(409)
+    expect(r.json<{ code: string }>().code).toBe('rateCalendar.closed')
   })
 })

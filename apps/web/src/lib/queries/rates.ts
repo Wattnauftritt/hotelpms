@@ -236,6 +236,8 @@ export interface KalenderAbruf {
                     result: 'accepted' | 'unknown_code' | 'derived' | 'inactive'
                     days: number }>
   result: { prices: number; restrictions: number } | null
+  /** Zwischenstand des Umsystems (Migration 0217); `null`, solange es nichts meldet. */
+  progress: { days: number; totalDays: number; at: string } | null
 }
 
 export interface KalenderVorschau {
@@ -248,15 +250,21 @@ export interface KalenderVorschau {
 }
 
 /**
- * Stand des letzten Abrufs. Solange das Umsystem noch holt, wird alle drei
- * Sekunden nachgefragt; danach nicht mehr -- ein Bildschirm, der offen
- * steht, soll die API nicht den ganzen Tag beschaeftigen.
+ * Stand des letzten Abrufs. Solange das Umsystem noch holt, wird nachgefragt
+ * -- in der ersten Minute alle drei Sekunden, danach alle zehn: ein Jahr
+ * dauert Minuten, und der Unterschied von sieben Sekunden faellt dann nicht
+ * mehr auf. Danach nicht mehr; ein Bildschirm, der offen steht, soll die
+ * API nicht den ganzen Tag beschaeftigen.
  */
 export const useKalenderAbruf = (propertyId: number) =>
   useQuery<{ pull: KalenderAbruf | null; preview: KalenderVorschau | null }>({
     queryKey: ['rateCalendarPull', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/rate-calendar-pulls/current`),
-    refetchInterval: q => q.state.data?.pull?.status === 'requested' ? 3_000 : false
+    refetchInterval: q => {
+      const pull = q.state.data?.pull
+      if (pull?.status !== 'requested') return false
+      return Date.now() - Date.parse(pull.requestedAt) < 60_000 ? 3_000 : 10_000
+    }
   })
 
 export function useKalenderAnfordern(propertyId: number) {
