@@ -246,21 +246,51 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
     expect(s.preview).toBeNull()
   })
 
-  it('weist Tage ausserhalb des Auftrags und doppelte Tage ab', async () => {
+  it('laesst Tage ausserhalb des Auftrags und gleiche Doppel liegen', async () => {
+    await abonnieren()
+    const std = await ratenplan('DZ-STD')
+    const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
+    const m = await maschine(['rate:channel_sync'])
+    // Wie ein letzter 31-Tage-Block, der ueber das Ende ragt, und eine Naht
+    // zweier Bloecke, die denselben Tag zweimal bringt (27.10.2026).
+    const l = await liefern(m, ref, { status: 'delivered', plans: [
+      { ratePlanCode: 'DZ-STD', days: [
+        { date: '2027-04-30', priceCent: [1] },
+        { date: VON, priceCent: [9900], minLos: 2 },
+        { date: VON, priceCent: [9900], minLos: 2 },
+        { date: BIS, priceCent: [9800] },
+        { date: '2027-05-11', priceCent: [1] }] }] })
+    expect(l.statusCode, l.body).toBe(200)
+    expect(l.json<{ delivery: unknown }>().delivery).toEqual([
+      { ratePlanCode: 'DZ-STD', result: 'accepted', days: 2 }])
+    const s = await stand()
+    expect((await uebernehmen(ref, s.pull!.version)).statusCode).toBe(200)
+    expect(await preis(std, VON)).toEqual([9900])
+    expect(await preis(std, '2027-05-11')).toBeNull()
+  })
+
+  it('weist widerspruechliche Doppel ab und haelt das am Auftrag fest', async () => {
     await abonnieren()
     await ratenplan('DZ-STD')
     const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
     const m = await maschine(['rate:channel_sync'])
-    const aussen = await liefern(m, ref, { status: 'delivered', plans: [
-      { ratePlanCode: 'DZ-STD', days: [{ date: '2027-06-01', priceCent: [9900] }] }] })
-    expect(aussen.statusCode).toBe(422)
     const doppelt = await liefern(m, ref, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] },
                                         { date: VON, priceCent: [9800] }] }] })
     expect(doppelt.statusCode).toBe(422)
+    // Die Oberflaeche wartet nicht weiter, sondern zeigt, woran es lag.
+    const s = await stand()
+    expect(s.pull).toMatchObject({ status: 'failed', message: '422: plans.0.days.1.date' })
+
     const kommastelle = await liefern(m, ref, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [99.5] }] }] })
     expect(kommastelle.statusCode).toBe(422)
+
+    // Eine richtige Lieferung danach ersetzt den Fehler.
+    const gut = await liefern(m, ref, { status: 'delivered', plans: [
+      { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] }] }] })
+    expect(gut.statusCode, gut.body).toBe(200)
+    expect((await stand()).pull).toMatchObject({ status: 'delivered', message: null })
   })
 
   it('nimmt eine Lieferung nur mit dem eigenen Recht an', async () => {

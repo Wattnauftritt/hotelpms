@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
-import { Errors, type Meldung } from '../platform/errors.js'
+import { AppError, Errors, type Meldung } from '../platform/errors.js'
 import { emitEvent } from '../platform/events.js'
 import { can, type Principal } from '../platform/context.js'
 
@@ -111,22 +111,26 @@ function lieferungPruefen(
     if (code === '' || code.length > 64) falsch(`plans.${i}.ratePlanCode`, 'field.required')
     else if (codes.has(code)) falsch(`plans.${i}.ratePlanCode`)
     codes.add(code)
-    if (!Array.isArray(plan.days) || plan.days.length > MAX_DAYS) {
+    // Doppelt so viel wie der Zeitraum: Naehte zweier Bloecke kommen doppelt.
+    if (!Array.isArray(plan.days) || plan.days.length > 2 * MAX_DAYS) {
       falsch(`plans.${i}.days`)
       return { code, tage: [] }
     }
-    const daten = new Set<string>()
-    const tage = plan.days.map((d: unknown, j) => {
+    const daten = new Map<string, string>()
+    const tage: Array<Omit<Tag, 'plan'>> = []
+    plan.days.forEach((d: unknown, j) => {
       const t = (d ?? {}) as Record<string, unknown>
       const feld = (n: string): string => `plans.${i}.days.${j}.${n}`
       const date = t.date
-      if (typeof date !== 'string' || !isIsoDate(date) || date < from || date > to
-          || daten.has(date)) {
+      if (typeof date !== 'string' || !isIsoDate(date)) {
         falsch(feld('date'))
-      } else {
-        daten.add(date)
+        return
       }
-      const tag: Omit<Tag, 'plan'> = { date: date as string }
+      // Ein Tag ausserhalb des Auftrags wurde nicht erfragt und bleibt
+      // liegen. Abgewiesen hiess bis 27.10.2026: ein letzter 31-Tage-Block,
+      // der zwei Tage ueber das Ende ragte, verwarf das ganze Jahr.
+      if (date < from || date > to) return
+      const tag: Omit<Tag, 'plan'> = { date }
       if (t.priceCent != null) {
         const p = t.priceCent
         if (!Array.isArray(p) || p.length === 0 || p.length > MAX_OCCUPANCY
@@ -149,7 +153,16 @@ function lieferungPruefen(
         if (typeof t[n] !== 'boolean') falsch(feld(n))
         else tag[n] = t[n]
       }
-      return tag
+      // Derselbe Tag zweimal: gleich ist er die Naht zweier Bloecke und
+      // schadet nicht; verschieden weiss niemand, welcher gilt.
+      const wert = JSON.stringify(tag)
+      const vorher = daten.get(date)
+      if (vorher === undefined) {
+        daten.set(date, wert)
+        tage.push(tag)
+      } else if (vorher !== wert) {
+        falsch(feld('date'))
+      }
     })
     return { code, tage }
   })
@@ -342,7 +355,7 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
         throw Errors.validation({ daysDone: ['field.invalid'] })
       }
 
-      return tx(req.pool, req, async client => {
+      const aus = await tx(req.pool, req, async client => {
         const a = await abrufLaden(client, `public_ref = $1`, [pullRef], true)
         if (a === null) throw Errors.notFound('res.rateCalendarPull')
         // Das Recht im Haus des Abrufs: die Route nimmt keine Property.
@@ -378,7 +391,28 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
           return antwort(r.rows[0]!)
         }
 
-        const geliefert = lieferungPruefen(body.plans, a.date_from, a.date_to)
+        let geliefert: ReturnType<typeof lieferungPruefen>
+        try {
+          geliefert = lieferungPruefen(body.plans, a.date_from, a.date_to)
+        } catch (e) {
+          if (!(e instanceof AppError) || e.status !== 422) throw e
+          /*
+           * Am Auftrag festhalten, nicht nur dem Umsystem antworten. Bis
+           * 27.10.2026 stand ein abgewiesenes Jahr in der Oberflaeche als
+           * "370 von 370 Tagen geholt" und wartete weiter -- die Antwort
+           * 422 sah nur das Protokoll des Umsystems. Die Feldnamen sind kein
+           * Satz, sondern das, was das Umsystem zur Behebung braucht. Eine
+           * spaetere, richtige Lieferung ersetzt den Fehler wie bisher.
+           */
+          const felder = Object.keys(e.errorKeys ?? {})
+          const m = `422: ${felder.slice(0, 5).join(', ')}${felder.length > 5 ? ', …' : ''}`
+          await client.query(
+            `UPDATE rate_calendar_pull
+                SET status = 'failed', message = $2, payload = NULL, plans = NULL,
+                    delivered_at = now(), version = version + 1
+              WHERE id = $1`, [a.id, m.slice(0, 500)])
+          return { abgewiesen: e }
+        }
         // Die Codes in einer Abfrage nachschlagen, und nur im Haus des
         // Abrufs: die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus.
         const { rows: plaene } = await client.query<{
@@ -407,6 +441,8 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
           [a.id, JSON.stringify(payload), JSON.stringify(ergebnis)])
         return antwort(r.rows[0]!)
       })
+      if ('abgewiesen' in aus) throw aus.abgewiesen
+      return aus
     }
   })
 
