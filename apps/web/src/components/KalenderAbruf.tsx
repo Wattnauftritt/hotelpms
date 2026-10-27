@@ -34,6 +34,12 @@ const GEDULD_MS = 60_000
  * noch Block um Block holte.
  */
 const STILL_MS = 10 * 60_000
+/**
+ * Alle Tage geholt, und so lange danach keine Lieferung: dann ist sie
+ * unterwegs verloren gegangen, nicht noch in Arbeit. Das Senden eines
+ * Jahres an StayGrid dauert Sekunden.
+ */
+const LIEFERUNG_MS = 2 * 60_000
 
 export function KalenderAbruf({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -253,6 +259,7 @@ function Warten({ pull, zeitraum }: { pull: Abruf; zeitraum: string }): JSX.Elem
                                  pull.progress === null ? 0 : Date.parse(pull.progress.at))
   const still = jetzt - lebenszeichen > STILL_MS
   const p = pull.progress
+  const verloren = p !== null && p.days >= p.totalDays && jetzt - lebenszeichen > LIEFERUNG_MS
 
   return (
     <div className="space-y-1 text-sm" role="status">
@@ -268,7 +275,9 @@ function Warten({ pull, zeitraum }: { pull: Abruf; zeitraum: string }): JSX.Elem
           </div>
         </div>
       )}
-      {still
+      {verloren
+        ? <div className="text-amber-800">{t('rate.pull.undelivered')}</div>
+        : still
         ? <div className="text-amber-800">{t('rate.pull.slow')}</div>
         : seitAuftrag > GEDULD_MS
           && <div className="text-neutral-600">{t('rate.pull.patience')}</div>}
