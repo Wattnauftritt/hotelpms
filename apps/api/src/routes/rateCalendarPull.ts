@@ -67,10 +67,13 @@ interface Abruf {
   requested_at: string
   delivered_at: string | null
   applied_at: string | null
+  progress_days: number | null
+  progress_at: string | null
 }
 
 const SPALTEN = `id, property_id, public_ref, date_from::text, date_to::text, status, version,
-                 plans, message, result, requested_at, delivered_at, applied_at`
+                 plans, message, result, requested_at, delivered_at, applied_at,
+                 progress_days, progress_at`
 
 function zeitraum(from: unknown, to: unknown): { from: string; to: string } {
   if (typeof from !== 'string' || !isIsoDate(from)) throw Errors.validation({ from: ['field.isoDate'] })
@@ -234,7 +237,10 @@ function antwort(a: Abruf) {
     pullRef: a.public_ref, status: a.status, from: a.date_from, to: a.date_to,
     version: a.version, requestedAt: a.requested_at, deliveredAt: a.delivered_at,
     appliedAt: a.applied_at, message: a.message, delivery: a.plans ?? [],
-    result: a.result
+    result: a.result,
+    progress: a.progress_at === null ? null
+      : { days: a.progress_days ?? 0, totalDays: nightsBetween(a.date_from, a.date_to) + 1,
+          at: a.progress_at }
   }
 }
 
@@ -311,6 +317,12 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
    * ersetzt die erste und zaehlt `version` hoch. Ein Plan, der abgeleitet
    * ist, wird uebergangen -- er folgt seiner Basis, und ein eigener Preis
    * darin ginge beim naechsten Schreiben der Basis ohnehin verloren.
+   *
+   * **Zwischenstand** (Migration 0217): `status: progress` mit `daysDone`
+   * meldet, wie viele Tage schon geholt sind, und ist das Lebenszeichen,
+   * an dem die Oberflaeche sieht, dass gearbeitet wird. Er geht nur auf
+   * einen wartenden Abruf; auf einen ersetzten antwortet 409, und das
+   * Umsystem kann aufhoeren, statt ein Jahr fuer niemanden zu holen.
    */
   registerRoute(app, {
     method: 'PUT',
@@ -320,10 +332,14 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
     bodyLimit: 4 * 1024 * 1024,
     handler: async (req) => {
       const { pullRef } = req.params as { pullRef: string }
-      const body = (req.body ?? {}) as { status?: unknown; plans?: unknown; message?: unknown }
+      const body = (req.body ?? {}) as {
+        status?: unknown; plans?: unknown; message?: unknown; daysDone?: unknown }
       const principal = req.principal as Principal
-      if (body.status !== 'delivered' && body.status !== 'failed') {
+      if (body.status !== 'delivered' && body.status !== 'failed' && body.status !== 'progress') {
         throw Errors.validation({ status: ['field.invalid'] })
+      }
+      if (body.status === 'progress' && !ganz(body.daysDone, 0, MAX_DAYS)) {
+        throw Errors.validation({ daysDone: ['field.invalid'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -335,6 +351,21 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
         }
         if (!['requested', 'delivered', 'failed'].includes(a.status)) {
           throw Errors.conflict('rateCalendar.closed')
+        }
+
+        if (body.status === 'progress') {
+          // Nur solange gewartet wird. Ein Zwischenstand nach der Lieferung
+          // kaeme aus einem zweiten, verspaeteten Lauf und gehoert nicht hin.
+          if (a.status !== 'requested') throw Errors.conflict('rateCalendar.closed')
+          // Nie mehr als der Zeitraum, und nie zurueck: laufen zwei Bloecke
+          // nebeneinander, darf der langsamere den Balken nicht kuerzen.
+          const r = await client.query<Abruf>(
+            `UPDATE rate_calendar_pull
+                SET progress_days = LEAST(GREATEST(COALESCE(progress_days, 0), $2),
+                                          date_to - date_from + 1),
+                    progress_at = now()
+              WHERE id = $1 RETURNING ${SPALTEN}`, [a.id, body.daysDone])
+          return antwort(r.rows[0]!)
         }
 
         if (body.status === 'failed') {

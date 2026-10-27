@@ -1,7 +1,8 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { request as httpRequest, type ClientRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import { withTransaction, type Pool, type PoolClient, type DbContext } from '@hotelpms/db'
+import { withTransaction, SYSTEM_CONTEXT, type Pool, type PoolClient, type DbContext }
+  from '@hotelpms/db'
 import { webhookSignature, webhookDelivered, webhookRetryDelaySeconds,
          WEBHOOK_MAX_ATTEMPTS, WEBHOOK_HEADERS, checkWebhookTargetUrl,
          checkResolvedAddress, classifyDeliveryError,
@@ -390,4 +391,22 @@ export async function deliverWebhooks(
         WHERE id = ANY($1::bigint[]) AND status = 'pending' AND attempts > 0`, [zurueck]))
   }
   return result
+}
+
+/**
+ * Haeuser mit faelliger Zustellung, in einer Abfrage ueber alle.
+ *
+ * Fuer den kurzen Webhook-Takt im Worker; wie `propertiesWithDuePushes`
+ * mit der Eigentuemerrolle, weil die Frage mandantenuebergreifend ist und
+ * nur Kennungen liest. Der Teilindex webhook_delivery_due (0020) enthaelt
+ * nur offene Zeilen, die Frage kostet damit fast nichts.
+ */
+export async function propertiesWithDueWebhooks(admin: Pool): Promise<Set<number>> {
+  const r = await withTransaction(admin, SYSTEM_CONTEXT, c =>
+    c.query<{ property_id: number }>(
+      `SELECT DISTINCT d.property_id::int AS property_id
+         FROM webhook_delivery d
+         JOIN webhook_subscription s ON s.id = d.subscription_id AND s.status = 'active'
+        WHERE d.status = 'pending' AND d.next_attempt_at <= now()`))
+  return new Set(r.rows.map(x => x.property_id))
 }
