@@ -37,6 +37,15 @@ export interface InvoiceLineSource {
   businessDate: string
   quantity: number
   netCent: Cent
+  /**
+   * Brutto der Buchung, ohne den Ausgleich der Rechnung. Daran wird
+   * entschieden, ob die Naechte verschieden viel kosteten: das Netto
+   * traegt nach `alignLineNets` an einer Zeile einen Cent mehr oder
+   * weniger, und zwei Fruehstuecksgetraenke zu je 1,65 brutto standen
+   * dann als "Ø 1,39" auf dem Blatt, obwohl beide gleich viel kosteten
+   * (Rechnung Zimmer 27, 28.10.2026). Fehlt es, gilt das Netto.
+   */
+  grossCent?: Cent
   rateBp: BasisPoints
   unitCode?: string
   /** Zusatz "Zimmer 101, Anna Berger" (0175), falls die Rechnung ihn traegt. */
@@ -69,6 +78,8 @@ interface Gruppe {
   bis: string
   quantity: number
   netCent: number
+  /** Brutto der Naechte, solange jede ihres mitbringt, sonst null. */
+  grossCent: number | null
   /** Die Naechte kosteten nicht alle gleich viel. */
   gemischt: boolean
   quelle: InvoiceLineSource
@@ -94,8 +105,8 @@ export function groupInvoiceLines(quellen: InvoiceLineSource[]): CiiLine[] {
     const passt = m !== null && `${m[4]}-${m[3]}-${m[2]}` === q.businessDate
     if (!passt) {
       gruppen.push({ basis: q.description, von: q.businessDate, bis: q.businessDate,
-                     quantity: q.quantity, netCent: q.netCent, gemischt: false,
-                     quelle: q, index })
+                     quantity: q.quantity, netCent: q.netCent,
+                     grossCent: q.grossCent ?? null, gemischt: false, quelle: q, index })
       continue
     }
     const basis = m[1]!
@@ -106,15 +117,20 @@ export function groupInvoiceLines(quellen: InvoiceLineSource[]): CiiLine[] {
     // Buchungen am selben Tag) ist keine weitere Nacht.
     if (g !== undefined && naechsterTag(g.bis) === q.businessDate) {
       g.bis = q.businessDate
-      // Preis je Einheit verglichen ueber Kreuz, ohne Division.
-      if (q.netCent * g.quantity !== g.netCent * q.quantity) g.gemischt = true
+      // Preis je Einheit verglichen ueber Kreuz, ohne Division; brutto,
+      // wo es bekannt ist (siehe grossCent).
+      const [preis, bisher] = g.grossCent !== null && q.grossCent !== undefined
+        ? [q.grossCent, g.grossCent] : [q.netCent, g.netCent]
+      if (preis * g.quantity !== bisher * q.quantity) g.gemischt = true
+      g.grossCent = g.grossCent !== null && q.grossCent !== undefined
+        ? g.grossCent + q.grossCent : null
       g.quantity += q.quantity
       g.netCent += q.netCent
       continue
     }
     const neu: Gruppe = { basis, von: q.businessDate, bis: q.businessDate,
-                          quantity: q.quantity, netCent: q.netCent, gemischt: false,
-                          quelle: q, index }
+                          quantity: q.quantity, netCent: q.netCent,
+                          grossCent: q.grossCent ?? null, gemischt: false, quelle: q, index }
     offen.set(schluessel, neu)
     gruppen.push(neu)
   }

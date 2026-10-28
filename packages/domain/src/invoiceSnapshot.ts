@@ -25,6 +25,8 @@ export interface InvoiceChargeRow {
   description: string
   quantity: number
   net_cent: string | number
+  /** Brutto der Buchung; vergleicht die Preise der Naechte (groupInvoiceLines). */
+  gross_cent?: string | number
   tax_rate_bp: number
   revenue_account: string
   business_date: string
@@ -96,6 +98,7 @@ export function chargeLineSource(
     // kein Tag Beherbergung (Migration 0158).
     unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
     netCent: Number(c.net_cent) + ausgleich,
+    ...(c.gross_cent === undefined ? {} : { grossCent: Number(c.gross_cent) }),
     rateBp: c.tax_rate_bp,
     rank: rang(c)
   }

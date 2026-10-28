@@ -36,6 +36,25 @@ describe('Positionen je Leistung zusammenfassen', () => {
     expect(l.map(x => x.averagePrice ?? false)).toEqual([true, false, false])
   })
 
+  /**
+   * Rechnung Zimmer 27 (28.10.2026): zwei Getraenke zu je 1,65 brutto, der
+   * Ausgleich der Rechnung nimmt einer Zeile einen Cent Netto (139 und 138).
+   * Gleich teuer bleibt gleich teuer -- kein "Ø 1,39", den Menge mal Preis
+   * nicht trifft.
+   */
+  it('nimmt den Cent des Ausgleichs nicht fuer einen anderen Preis', () => {
+    const getraenk = (tag: string, netCent: number): InvoiceLineSource => ({
+      description: `Frühstück Getränke ${tag}.10.2026`, businessDate: `2026-10-${tag}`,
+      quantity: 1, netCent, grossCent: 165, rateBp: 1900, unitCode: 'C62', rank: 2 })
+    expect(groupInvoiceLines([getraenk('27', 139), getraenk('28', 138)])).toEqual([
+      { name: 'Frühstück Getränke 27.10.–28.10.2026', quantity: 2, unitCode: 'C62',
+        netCent: 277, rateBp: 1900 }])
+    // Verschiedene Bruttopreise bleiben ein Durchschnitt.
+    expect(groupInvoiceLines([getraenk('27', 139),
+                              { ...getraenk('28', 147), grossCent: 175 }])[0]!.averagePrice)
+      .toBe(true)
+  })
+
   it('laesst eine einzelne Nacht stehen, wie sie gebucht wurde', () => {
     expect(groupInvoiceLines(nacht('08', 7859)).map(l => l.name)).toEqual(
       ['Übernachtung 08.10.2026', 'Frühstück Speisen 08.10.2026', 'Frühstück Getränke 08.10.2026'])
