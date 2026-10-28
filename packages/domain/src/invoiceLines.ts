@@ -25,10 +25,12 @@ import { lineWithGuest, type CiiLine } from './invoiceCii.js'
  * sich dadurch nicht: sie wird je Satz aus der Nettosumme gerechnet, und
  * die ist dieselbe.
  *
- * **Der Zeitraum** reicht von der ersten bis zur letzten Nacht,
- * "Übernachtung 08.10.–10.10.2026" bei drei Naechten: so wie der
- * Leistungszeitraum im Kopf, der aus denselben Geschaeftsdaten kommt.
- * Anreise bis Abreise stuende dort sonst einen Tag weiter als oben.
+ * **Der Zeitraum** reicht bei Naechten von der Anreise bis zur Abreise,
+ * "Übernachtung 08.10.–11.10.2026" bei drei Naechten, so wie der
+ * Leistungszeitraum im Kopf (chargeServiceEnd). Bis 28.10.2026 stand dort
+ * die letzte Nacht, "08.10.–10.10.", und las sich, als sei der Gast am
+ * 10. abgereist (Sven: "der Gast war ja zwei Naechte da"). Andere
+ * Leistungen je Tag (Parkplatz) reichen vom ersten bis zum letzten Tag.
  */
 export interface InvoiceLineSource {
   /** Text der Buchung, ohne Gastzusatz. */
@@ -55,6 +57,8 @@ export interface InvoiceLineSource {
    * 2 Fruehstueck Getraenke, 3 Inklusivleistung, 4 alles andere.
    */
   rank: number
+  /** Eine Nacht (isNightCharge): der Zeitraum endet am Morgen danach. */
+  night?: boolean
 }
 
 const DATUM_AM_ENDE = /^(.*\S) (\d{2})\.(\d{2})\.(\d{4})$/
@@ -146,7 +150,7 @@ export function groupInvoiceLines(quellen: InvoiceLineSource[]): CiiLine[] {
     const text = g.von === g.bis && g.basis !== g.quelle.description
       ? g.quelle.description
       : g.basis === g.quelle.description ? g.basis
-      : `${g.basis} ${zeitraum(g.von, g.bis)}`
+      : `${g.basis} ${zeitraum(g.von, g.quelle.night ? naechsterTag(g.bis) : g.bis)}`
     return {
       name: lineWithGuest(text, g.quelle.guest),
       quantity: g.quantity,

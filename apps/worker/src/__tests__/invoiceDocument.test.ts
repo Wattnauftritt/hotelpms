@@ -203,7 +203,7 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     const xml = (await beleg(r.id))!.xml!
     const namen = [...xml.matchAll(/<ram:Name>([^<]*(?:Übernachtung|Frühstück)[^<]*)<\/ram:Name>/g)]
       .map(m => m[1])
-    expect(namen).toEqual(['Übernachtung 01.10.–03.10.2026', 'Frühstück Speisen 01.10.–03.10.2026'])
+    expect(namen).toEqual(['Übernachtung 01.10.–04.10.2026', 'Frühstück Speisen 01.10.–04.10.2026'])
     expect(xml).toContain('<ram:BilledQuantity unitCode="DAY">3</ram:BilledQuantity>')
     expect(xml).toContain('<ram:LineTotalAmount>235.79</ram:LineTotalAmount>')
   })

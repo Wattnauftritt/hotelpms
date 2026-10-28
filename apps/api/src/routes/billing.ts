@@ -9,7 +9,7 @@ import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
          breakfastPerNight, breakfastCount, splitNight, alignLineNets, taxAdjustToGross,
-         preisJeNacht, guestLineLabel, lineWithGuest } from '@hotelpms/domain'
+         preisJeNacht, guestLineLabel, lineWithGuest, chargeServiceEnd } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -1078,10 +1078,13 @@ async function rechnungsEntwurf(
    * Hotelrechnungen. Er wird aus den Geschäftsdaten der abzurechnenden
    * Positionen abgeleitet und nicht vom Aufrufer entgegengenommen:
    * die Positionen wissen es, der Aufrufer könnte sich irren.
+   *
+   * Eine Nacht endet am Abreisetag (chargeServiceEnd): zwei Naechte ab
+   * dem 27.10. sind der 27. bis 29., wie auf der Anzahlungsrechnung.
    */
   const daten = charges.rows.map(c => c.business_date).sort()
   const serviceFrom = daten[0]!
-  const serviceTo = daten[daten.length - 1]!
+  const serviceTo = charges.rows.map(chargeServiceEnd).sort().at(-1)!
 
   
   /*

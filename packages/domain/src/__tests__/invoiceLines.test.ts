@@ -7,11 +7,11 @@ function nacht(tag: string, logis: number, gast?: string): InvoiceLineSource[] {
   const de = `${tag}.10.2026`
   return [
     { description: `Übernachtung ${de}`, businessDate: datum, quantity: 1, netCent: logis,
-      rateBp: 700, unitCode: 'DAY', rank: 0, guest: gast },
+      rateBp: 700, unitCode: 'DAY', rank: 0, guest: gast, night: true },
     { description: `Frühstück Speisen ${de}`, businessDate: datum, quantity: 1, netCent: 360,
-      rateBp: 700, unitCode: 'C62', rank: 1, guest: gast },
+      rateBp: 700, unitCode: 'C62', rank: 1, guest: gast, night: true },
     { description: `Frühstück Getränke ${de}`, businessDate: datum, quantity: 1, netCent: 139,
-      rateBp: 1900, unitCode: 'C62', rank: 2, guest: gast }
+      rateBp: 1900, unitCode: 'C62', rank: 2, guest: gast, night: true }
   ]
 }
 
@@ -21,11 +21,11 @@ describe('Positionen je Leistung zusammenfassen', () => {
     const quellen = [...nacht('08', 7859), ...nacht('09', 7860), ...nacht('10', 7860)]
       .sort((a, b) => b.rank - a.rank)
     expect(groupInvoiceLines(quellen)).toEqual([
-      { name: 'Übernachtung 08.10.–10.10.2026', quantity: 3, unitCode: 'DAY',
+      { name: 'Übernachtung 08.10.–11.10.2026', quantity: 3, unitCode: 'DAY',
         netCent: 23_579, rateBp: 700, averagePrice: true },
-      { name: 'Frühstück Speisen 08.10.–10.10.2026', quantity: 3, unitCode: 'C62',
+      { name: 'Frühstück Speisen 08.10.–11.10.2026', quantity: 3, unitCode: 'C62',
         netCent: 1_080, rateBp: 700 },
-      { name: 'Frühstück Getränke 08.10.–10.10.2026', quantity: 3, unitCode: 'C62',
+      { name: 'Frühstück Getränke 08.10.–11.10.2026', quantity: 3, unitCode: 'C62',
         netCent: 417, rateBp: 1900 }
     ])
   })
@@ -45,14 +45,27 @@ describe('Positionen je Leistung zusammenfassen', () => {
   it('nimmt den Cent des Ausgleichs nicht fuer einen anderen Preis', () => {
     const getraenk = (tag: string, netCent: number): InvoiceLineSource => ({
       description: `Frühstück Getränke ${tag}.10.2026`, businessDate: `2026-10-${tag}`,
-      quantity: 1, netCent, grossCent: 165, rateBp: 1900, unitCode: 'C62', rank: 2 })
+      quantity: 1, netCent, grossCent: 165, rateBp: 1900, unitCode: 'C62', rank: 2,
+      night: true })
     expect(groupInvoiceLines([getraenk('27', 139), getraenk('28', 138)])).toEqual([
-      { name: 'Frühstück Getränke 27.10.–28.10.2026', quantity: 2, unitCode: 'C62',
+      { name: 'Frühstück Getränke 27.10.–29.10.2026', quantity: 2, unitCode: 'C62',
         netCent: 277, rateBp: 1900 }])
     // Verschiedene Bruttopreise bleiben ein Durchschnitt.
     expect(groupInvoiceLines([getraenk('27', 139),
                               { ...getraenk('28', 147), grossCent: 175 }])[0]!.averagePrice)
       .toBe(true)
+  })
+
+  /** Sven, 28.10.2026: zwei Naechte ab dem 27. sind der 27. bis 29., nicht bis 28. */
+  it('fuehrt Naechte bis zum Abreisetag, Tagesleistungen bis zum letzten Tag', () => {
+    const parken = (tag: string): InvoiceLineSource => ({
+      description: `Parkplatz ${tag}.10.2026`, businessDate: `2026-10-${tag}`,
+      quantity: 1, netCent: 840, rateBp: 1900, unitCode: 'C62', rank: 4 })
+    const l = groupInvoiceLines([...nacht('27', 8308), parken('27'),
+                                 ...nacht('28', 8308), parken('28')])
+    expect(l.map(x => x.name)).toEqual([
+      'Übernachtung 27.10.–29.10.2026', 'Frühstück Speisen 27.10.–29.10.2026',
+      'Frühstück Getränke 27.10.–29.10.2026', 'Parkplatz 27.10.–28.10.2026'])
   })
 
   it('laesst eine einzelne Nacht stehen, wie sie gebucht wurde', () => {
@@ -65,7 +78,7 @@ describe('Positionen je Leistung zusammenfassen', () => {
     const l = groupInvoiceLines([...nacht('01', 8000), ...nacht('02', 8000),
                                  ...nacht('05', 8000)]).filter(x => x.unitCode === 'DAY')
     expect(l.map(x => [x.name, x.quantity])).toEqual([
-      ['Übernachtung 01.10.–02.10.2026', 2], ['Übernachtung 05.10.2026', 1]])
+      ['Übernachtung 01.10.–03.10.2026', 2], ['Übernachtung 05.10.2026', 1]])
   })
 
   it('haelt die Zimmer einer Sammelrechnung auseinander, jedes mit Uebernachtung zuerst', () => {
@@ -74,12 +87,12 @@ describe('Positionen je Leistung zusammenfassen', () => {
     const l = groupInvoiceLines([...nacht('08', 8000, a), ...nacht('08', 9000, b),
                                  ...nacht('09', 8000, a), ...nacht('09', 9000, b)])
     expect(l.map(x => x.name)).toEqual([
-      `Übernachtung 08.10.–09.10.2026 – ${a}`,
-      `Frühstück Speisen 08.10.–09.10.2026 – ${a}`,
-      `Frühstück Getränke 08.10.–09.10.2026 – ${a}`,
-      `Übernachtung 08.10.–09.10.2026 – ${b}`,
-      `Frühstück Speisen 08.10.–09.10.2026 – ${b}`,
-      `Frühstück Getränke 08.10.–09.10.2026 – ${b}`])
+      `Übernachtung 08.10.–10.10.2026 – ${a}`,
+      `Frühstück Speisen 08.10.–10.10.2026 – ${a}`,
+      `Frühstück Getränke 08.10.–10.10.2026 – ${a}`,
+      `Übernachtung 08.10.–10.10.2026 – ${b}`,
+      `Frühstück Speisen 08.10.–10.10.2026 – ${b}`,
+      `Frühstück Getränke 08.10.–10.10.2026 – ${b}`])
     expect(l[3]!.netCent).toBe(18_000)
   })
 

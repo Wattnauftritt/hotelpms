@@ -151,13 +151,14 @@ describe('Rechnung und Pflichtangaben', () => {
     expect(r.statusCode).toBe(201)
     const inv = JSON.parse(r.body) as { serviceFrom: string; serviceTo: string }
     expect(inv.serviceFrom).toBe('2026-10-01')
-    expect(inv.serviceTo).toBe('2026-10-03')
+    // Drei Naechte ab dem 1. enden am Abreisetag, dem 4. (Sven, 28.10.2026).
+    expect(inv.serviceTo).toBe('2026-10-04')
 
     const g = await owner.query<{ service_from: string; service_to: string }>(
       `SELECT service_from::text, service_to::text FROM invoice WHERE property_id = $1`,
       [fx.propertyId])
     expect(g.rows[0]!.service_from).toBe('2026-10-01')
-    expect(g.rows[0]!.service_to).toBe('2026-10-03')
+    expect(g.rows[0]!.service_to).toBe('2026-10-04')
   })
 
   /**
