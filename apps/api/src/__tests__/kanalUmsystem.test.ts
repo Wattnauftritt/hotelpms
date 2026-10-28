@@ -543,6 +543,54 @@ describe('StayGrid vergibt die Zimmer', () => {
       { trigger: 'auto', from_date: '2026-10-10', to_date: '2027-10-11' })
   })
 
+  /*
+   * Befund 28.10.2026 (0219): die Rezeption zog eine Gaestehausbuchung im
+   * Plan in ein anderes Zimmer, danach nahm sie das Storno aus Booking.com
+   * nicht mehr an. Vergibt StayGrid die Zimmer, ist ein Zimmerzug der
+   * Rezeption so wenig eine Aenderung der Buchung wie einer des Sortierers.
+   */
+  it('nimmt das Storno an, nachdem die Rezeption das Zimmer gewechselt hat', async () => {
+    await automatisch()
+    const token = await zugang()
+    const a = JSON.parse((await put(token, 'rc-1', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-04' }] })).body) as Antwort
+    const ref = a.reservations![0]!.reservationRef
+    expect(a.reservations![0]!.roomCode).toBe('6102')
+    const zimmer = async (code: string) => (await owner.query<{ id: number }>(
+      `SELECT id FROM resource WHERE code = $1`, [code])).rows[0]!.id
+
+    const zug = await app.inject({ method: 'POST',
+      url: `/v1/reservations/${ref}/assign-unit`, headers: session(),
+      payload: { resourceId: await zimmer('6101') } })
+    expect(zug.statusCode, zug.body).toBe(200)
+    const wechsel = await app.inject({ method: 'POST',
+      url: `/v1/reservations/${ref}/room-move`, headers: session(),
+      payload: { from: '2026-11-02', resourceId: await zimmer('6102') } })
+    expect(wechsel.statusCode, wechsel.body).toBe(200)
+
+    const b = await owner.query(`SELECT channel_owner FROM booking WHERE public_ref = $1`,
+      [a.bookingRef])
+    expect(b.rows[0]!.channel_owner).toBe('source')
+    const c = await cancel(token, 'rc-1')
+    expect((JSON.parse(c.body) as Antwort).status).toBe('canceled')
+    expect((await reservierungen(a.bookingRef)).map(x => x.status)).toEqual(['Canceled'])
+  })
+
+  it('macht die Buchung beim Zimmerzug lokal, solange das Umsystem die Zimmer vergibt', async () => {
+    const token = await zugang()
+    const a = JSON.parse((await put(token, 'rc-1', {
+      segments: [{ roomCode: '6101', arrival: '2026-11-02', departure: '2026-11-04' }] }))
+      .body) as Antwort
+    const zug = await app.inject({ method: 'POST',
+      url: `/v1/reservations/${a.reservations![0]!.reservationRef}/assign-unit`,
+      headers: session(), payload: { resourceId: (await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE code = '6102'`)).rows[0]!.id } })
+    expect(zug.statusCode, zug.body).toBe(200)
+    const b = await owner.query(`SELECT channel_owner FROM booking WHERE public_ref = $1`,
+      [a.bookingRef])
+    expect(b.rows[0]!.channel_owner).toBe('local')
+  })
+
   it('sortiert beim Storno nicht selbst, sondern merkt das Haus vor', async () => {
     await automatisch()
     const token = await zugang()
