@@ -144,7 +144,7 @@ async function load(
   const row = i.rows[0]!
 
   const c = await client.query<Buchung>(
-    `SELECT id, reverses_id, description, quantity, net_cent, tax_rate_bp, revenue_account,
+    `SELECT id, reverses_id, description, quantity, net_cent, gross_cent, tax_rate_bp, revenue_account,
             business_date::text, package_part
        FROM charge WHERE invoice_id = $1 ORDER BY id`, [invoiceId])
 

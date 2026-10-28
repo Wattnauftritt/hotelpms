@@ -25,6 +25,8 @@ export interface InvoiceChargeRow {
   description: string
   quantity: number
   net_cent: string | number
+  /** Brutto der Buchung; vergleicht die Preise der Naechte (groupInvoiceLines). */
+  gross_cent?: string | number
   tax_rate_bp: number
   revenue_account: string
   business_date: string
@@ -84,6 +86,33 @@ function rang(c: InvoiceChargeRow): number {
   return 4
 }
 
+/**
+ * Eine Buchung fuer eine Nacht: Logis und alles, was der Nachtlauf als Teil
+ * der Rate dazu bucht (Fruehstueck, Inklusivleistung). Ihr Geschaeftsdatum
+ * ist der Abend der Anreise; die Leistung endet am Morgen danach.
+ */
+export function isNightCharge(c: Pick<InvoiceChargeRow, 'revenue_account' | 'package_part'>): boolean {
+  return c.revenue_account === KONTO_LOGIS || c.package_part !== null
+}
+
+/**
+ * Letzter Tag der Leistung einer Buchung (§ 14 Abs. 4 Nr. 6 UStG). Bei
+ * einer Nacht der Abreisetag, sonst der Tag selbst. Sven, 28.10.2026: zwei
+ * Naechte ab dem 27.10. sind "27.10.–29.10.", nicht "27.10.–28.10.", denn
+ * der Gast war bis zum 29. im Haus.
+ */
+export function chargeServiceEnd(
+  c: Pick<InvoiceChargeRow, 'business_date' | 'revenue_account' | 'package_part'>
+): string {
+  return isNightCharge(c) ? nextIsoDay(c.business_date) : c.business_date
+}
+
+function nextIsoDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export function chargeLineSource(
   c: InvoiceChargeRow, ausgleich: number, gast: string | undefined
 ): InvoiceLineSource {
@@ -96,7 +125,9 @@ export function chargeLineSource(
     // kein Tag Beherbergung (Migration 0158).
     unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
     netCent: Number(c.net_cent) + ausgleich,
+    ...(c.gross_cent === undefined ? {} : { grossCent: Number(c.gross_cent) }),
     rateBp: c.tax_rate_bp,
+    ...(isNightCharge(c) ? { night: true } : {}),
     rank: rang(c)
   }
 }
