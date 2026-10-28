@@ -34,13 +34,13 @@
 -- Anfrage; ohne Kontext (kein Haus sichtbar) gilt das Umsystem als Vergeber,
 -- und der Vermerk wird wie bisher gesetzt -- im Zweifel geschuetzt.
 CREATE OR REPLACE FUNCTION room_sort_is_auto(p_property bigint)
-RETURNS boolean LANGUAGE sql STABLE SET search_path = public AS $$
+RETURNS boolean LANGUAGE sql STABLE SET search_path = public, pg_temp AS $$
   SELECT EXISTS (SELECT 1 FROM room_sort_setting
                   WHERE property_id = p_property AND mode = 'auto')
 $$;
 
 CREATE OR REPLACE FUNCTION channel_owner_from_reservation()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   IF nullif(current_setting('app.channel_push', true), '') IS NOT NULL
      OR nullif(current_setting('app.room_sort', true), '') IS NOT NULL THEN
