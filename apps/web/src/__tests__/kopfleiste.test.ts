@@ -48,7 +48,13 @@ describe('Die rechte Seite haengt nicht an der Rechnung', () => {
     // Stimmte die Messung einmal nicht, laege die Leiste unter dem
     // Abmelden-Knopf, statt ihn aus dem Bildschirm zu schieben.
     expect(shell).toContain('className="relative min-w-0 grow"')
-    expect(shell).toContain('className="relative z-10 flex shrink-0 items-center gap-4 bg-white"')
+    expect(shell).toMatch(/className="relative z-10 ms-auto flex shrink-0 items-center/)
+  })
+
+  it('gibt der Leiste unter 1 280 Pixeln eine eigene Zeile', () => {
+    // Am iPad hochkant lag der Mehr-Knopf sonst ueber "Einstellungen"
+    // (Apple, Regel 4, 30.10.2026).
+    expect(shell).toMatch(/order-last flex min-w-0 basis-full[\s\S]{0,80}xl:order-none/)
   })
 
   it('laesst keinen Bildschirm weg, sondern legt ihn ins Menue', () => {
