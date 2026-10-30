@@ -42,6 +42,17 @@
   }
 }
 
+/*
+ * Seitliche Einzuege der App. Quer gehalten liegt am Telefon die Kamera
+ * links oder rechts im Bild; ohne Einzug liefen Kopfleiste und Liste
+ * darunter. Im Browser sind die Werte null. Leisten mit `fixed` sehen
+ * dieses Padding nicht und tragen es selbst.
+ */
+#root {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 /* Zahlen im Zimmerplan und in Salden stehen untereinander. */
 .tabular-nums { font-variant-numeric: tabular-nums; }
 

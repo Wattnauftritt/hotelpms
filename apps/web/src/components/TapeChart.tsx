@@ -1532,7 +1532,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         */}
       {auswahl !== null && auswahl.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center gap-2
-                        bg-neutral-900 text-white px-3 py-1.5 text-sm shadow-lg">
+                        bg-neutral-900 text-white px-3 pt-1.5 text-sm shadow-lg
+                        pb-[max(0.375rem,env(safe-area-inset-bottom))]">
           <span className="font-medium">
             {auswahl.length === 1 ? t('plan.selectedRoom')
               : t('plan.selectedRooms', { n: auswahl.length })}

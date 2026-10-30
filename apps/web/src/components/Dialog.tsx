@@ -100,16 +100,22 @@ export function Dialog({ titel, unterzeile, breite = 'breit', fuss, onClose,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto
-                    bg-black/40 p-4"
+                    bg-black/40 p-4 pt-[max(1rem,env(safe-area-inset-top))]
+                    pb-[max(1rem,env(safe-area-inset-bottom))]"
          onClick={nebenbeiSchliessen ? onClose : undefined}>
       {/*
         * `max-h-[calc(100vh-2rem)]` und nicht `90vh`: die Maske soll den
         * Bildschirm ausnutzen und nur den Rand freilassen, den die
         * Umrandung braucht. Auf einem niedrigen Laptopbildschirm sind zehn
         * Prozent von oben und unten zwei Felder weniger.
+        *
+        * In der App kommen die Einzuege dazu: ohne sie lag der Kopf einer
+        * langen Maske am iPhone unter Uhr und Kamerainsel, und der
+        * Schliessen-Knopf war nicht zu treffen.
         */}
       <div className={`w-full ${BREITEN[breite]} my-auto flex flex-col
-                       max-h-[calc(100vh-2rem)] bg-white rounded-lg shadow-xl`}
+                       max-h-[calc(100vh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))]
+                       bg-white rounded-lg shadow-xl`}
            role="dialog" aria-modal="true"
            onClick={e => e.stopPropagation()}>
         <header className="flex items-baseline gap-3 border-b border-neutral-200

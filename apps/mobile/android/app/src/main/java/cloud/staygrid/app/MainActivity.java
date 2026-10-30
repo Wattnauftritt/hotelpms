@@ -1,6 +1,7 @@
 package cloud.staygrid.app;
 
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.TypedValue;
@@ -48,6 +49,13 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Am Telefon nur hochkant, wie am iPhone (Info.plist): quer bleiben
+        // neben Kopf- und Tableiste kaum 300 Punkte fuer die Arbeit. Ein
+        // Tablet (ab 600 dp) dreht weiter, Android 16 laesst es dort ohnehin
+        // nicht mehr sperren.
+        if (getResources().getConfiguration().smallestScreenWidthDp < 600) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        }
         registerPlugin(SitzungPlugin.class);
         registerPlugin(TexterkennungPlugin.class);
         registerPlugin(DateiPlugin.class);
