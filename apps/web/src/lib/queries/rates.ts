@@ -224,7 +224,7 @@ export const useChannelView = (
 /** Ein Abruf des Preiskalenders beim Umsystem (Migration 0179). */
 export interface KalenderAbruf {
   pullRef: string
-  status: 'requested' | 'delivered' | 'failed' | 'applied' | 'superseded'
+  status: 'requested' | 'delivered' | 'failed' | 'applied' | 'superseded' | 'discarded'
   from: string
   to: string
   version: number
@@ -291,6 +291,19 @@ export function useKalenderUebernehmen(propertyId: number) {
       void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+    }
+  })
+}
+
+/** Verwerfen schreibt nichts ins Raster; nur der Abruf selbst ist danach zu. */
+export function useKalenderVerwerfen(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (pullRef: string) =>
+      api.post<KalenderAbruf>(
+        `/v1/properties/${propertyId}/rate-calendar-pulls/${pullRef}/discard`, {}),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPull', propertyId] })
     }
   })
 }

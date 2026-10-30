@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react'
-import { useKalenderAbruf, useKalenderAnfordern, useKalenderUebernehmen,
+import { useKalenderAbruf, useKalenderAnfordern, useKalenderUebernehmen, useKalenderVerwerfen,
          MAX_RASTER_TAGE, type KalenderAbruf as Abruf } from '../lib/queries/rates.js'
 import { useT, useLocale, formatDate, geldFormatierer } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -134,12 +134,23 @@ function Stand(
   const locale = useLocale()
   const online = useOnline()
   const uebernehmen = useKalenderUebernehmen(propertyId)
+  const verwerfen = useKalenderVerwerfen(propertyId)
   const geld = geldFormatierer(locale)
   const zeitraum = `${formatDate(pull.from, locale)} – ${formatDate(pull.to, locale)}`
 
   if (pull.status === 'superseded') return null
 
-  if (pull.status === 'requested') return <Warten pull={pull} zeitraum={zeitraum} />
+  if (pull.status === 'requested') {
+    return <Warten propertyId={propertyId} pull={pull} zeitraum={zeitraum} />
+  }
+
+  if (pull.status === 'discarded') {
+    return (
+      <div className="text-sm text-neutral-600" role="status">
+        {t('rate.pull.discarded')} <span className="text-neutral-500">({zeitraum})</span>
+      </div>
+    )
+  }
 
   if (pull.status === 'failed') {
     return (
@@ -223,18 +234,34 @@ function Stand(
       )}
 
       {uebernehmen.isError && <Fehler error={uebernehmen.error} />}
+      {verwerfen.isError && <Fehler error={verwerfen.error} />}
       {/* Auch ohne Aenderung: die Uebernahme schliesst den Abruf ab, sonst
-          stuende die Lieferung bei jedem Oeffnen der Preise wieder da. */}
-      <button type="button"
-              disabled={!online || uebernehmen.isPending || vorschau === null}
-              onClick={() => {
-                onUebernehmen()
-                uebernehmen.mutate({ pullRef: pull.pullRef, version: pull.version })
-              }}
-              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
-                         disabled:opacity-40">
-        {t('common.apply')}
-      </button>
+          stuende die Lieferung bei jedem Oeffnen der Preise wieder da.
+          Verwerfen schliesst ihn ebenso, fuer eine Lieferung, die aelter ist
+          als das hier Gepflegte (Sven, 30.10.2026). */}
+      <div className="flex flex-wrap gap-2">
+        <button type="button"
+                disabled={!online || uebernehmen.isPending || verwerfen.isPending
+                          || vorschau === null}
+                onClick={() => {
+                  onUebernehmen()
+                  uebernehmen.mutate({ pullRef: pull.pullRef, version: pull.version })
+                }}
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                           disabled:opacity-40">
+          {t('common.apply')}
+        </button>
+        <button type="button"
+                disabled={!online || uebernehmen.isPending || verwerfen.isPending}
+                onClick={() => {
+                  onUebernehmen()
+                  verwerfen.mutate(pull.pullRef)
+                }}
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300 bg-white
+                           disabled:opacity-40">
+          {t('rate.pull.discard')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -246,8 +273,11 @@ function Stand(
  * ohne Zwischenstand aendert sich nichts, und der Hinweis nach einer Minute
  * erschiene nie.
  */
-function Warten({ pull, zeitraum }: { pull: Abruf; zeitraum: string }): JSX.Element {
+function Warten({ propertyId, pull, zeitraum }: {
+  propertyId: number; pull: Abruf; zeitraum: string }): JSX.Element {
   const t = useT()
+  const online = useOnline()
+  const verwerfen = useKalenderVerwerfen(propertyId)
   const [jetzt, setJetzt] = useState(() => Date.now())
   useEffect(() => {
     const uhr = setInterval(() => { setJetzt(Date.now()) }, 5_000)
@@ -281,6 +311,19 @@ function Warten({ pull, zeitraum }: { pull: Abruf; zeitraum: string }): JSX.Elem
         ? <div className="text-amber-800">{t('rate.pull.slow')}</div>
         : seitAuftrag > GEDULD_MS
           && <div className="text-neutral-600">{t('rate.pull.patience')}</div>}
+      {/* Erst wenn nichts mehr kommt: solange ein Abruf wartet, ist "Abrufen"
+          gesperrt, und am 30.10.2026 stand einer so fest, bis das Umsystem
+          von Hand nachgeholt wurde. Vorher verwirft man nur einen Lauf, der
+          gleich geliefert haette. */}
+      {(verloren || still) && (
+        <button type="button" disabled={!online || verwerfen.isPending}
+                onClick={() => { verwerfen.mutate(pull.pullRef) }}
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300 bg-white
+                           disabled:opacity-40">
+          {t('rate.pull.discard')}
+        </button>
+      )}
+      {verwerfen.isError && <Fehler error={verwerfen.error} />}
     </div>
   )
 }
