@@ -471,31 +471,50 @@ export function Shell(props: Props): JSX.Element {
   return (
     <Sprache locale={props.locale}>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
-        <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
+        {/*
+          * Die Einzuege gelten nur in der App (`viewport-fit=cover`), im
+          * Browser sind sie null. Ohne sie lag die Kopfleiste am iPad unter
+          * Uhr und Akkuanzeige.
+          */}
+        <header className="bg-white border-b border-neutral-200 sticky top-0 z-30
+                           pt-[env(safe-area-inset-top)]">
           {/* Nicht auf Papier: gedruckt wird der Bildschirm, nicht die Leiste.
               Der Uebungshinweis darunter bleibt -- ein Ausdruck aus dem
               Uebungshaus soll als solcher zu erkennen sein. */}
-          <div className="flex items-center gap-4 px-4 py-2 print:hidden">
+          {/*
+            * Unter 1 280 Pixeln zwei Zeilen: oben Name und Konto, darunter
+            * Suche und Bildschirmleiste ueber die ganze Breite. In einer
+            * Zeile blieb der Leiste am iPad (1 032 hochkant) weniger Platz
+            * als ihr "Mehr"-Knopf braucht, und er lag ueber "Einstellungen"
+            * und "Personal-App" (Apple, Regel 4, 30.10.2026). Die Zeile
+            * mehr kostet dort eine Zimmerzeile; am Desktop bleibt es eine.
+            */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 print:hidden
+                          xl:flex-nowrap">
             <span className="shrink-0 font-semibold">StayGrid</span>
-            {/*
-              * Die Detailsuche (Strg+K) vorn neben dem Namen und nicht rechts
-              * bei Sprache und Abmelden: sie gehoert zur Arbeit, nicht zum
-              * Konto. Sie schrumpft nicht; die Bildschirmleiste dahinter
-              * rechnet mit dem Platz, der uebrig bleibt. Ohne Haus -- das
-              * Adminpanel ohne Support-Sitzung -- gibt es nichts zu finden.
-              */}
-            {props.haus !== undefined && (
-              <div className="shrink-0">
-                <Detailsuche propertyId={props.haus.id} />
-              </div>
-            )}
-            <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
+            <div className="order-last flex min-w-0 basis-full items-center gap-4
+                            xl:order-none xl:basis-auto xl:grow">
+              {/*
+                * Die Detailsuche (Strg+K) vorn neben dem Namen und nicht rechts
+                * bei Sprache und Abmelden: sie gehoert zur Arbeit, nicht zum
+                * Konto. Sie schrumpft nicht; die Bildschirmleiste dahinter
+                * rechnet mit dem Platz, der uebrig bleibt. Ohne Haus -- das
+                * Adminpanel ohne Support-Sitzung -- gibt es nichts zu finden.
+                */}
+              {props.haus !== undefined && (
+                <div className="shrink-0">
+                  <Detailsuche propertyId={props.haus.id} />
+                </div>
+              )}
+              <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
+            </div>
             {/*
               * Die rechte Seite schrumpft nicht und liegt obenauf: was hier
               * steht, muss an einem geteilten Rechner immer erreichbar sein,
               * egal wie viele Bildschirme die Leiste links noch bekommt.
               */}
-            <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white">
+            <div className="relative z-10 ms-auto flex shrink-0 items-center gap-2 bg-white
+                            xl:gap-4">
               <Installieren />
               {props.personalApp === true && <ZurPersonalApp />}
               <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />

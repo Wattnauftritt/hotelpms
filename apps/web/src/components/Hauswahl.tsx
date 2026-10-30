@@ -38,7 +38,7 @@ const AB_HIER_SUCHEN = 8
 /** Das Kuerzel als Plakette -- an ihm erkennt man das Haus schneller als am Namen. */
 function Kuerzel({ haus }: { haus: Haus }): JSX.Element {
   return (
-    <span className={`rounded-sm px-1.5 py-0.5 text-xs font-medium tabular-nums
+    <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-medium tabular-nums
                       ${haus.isTraining
                         ? 'bg-violet-100 text-violet-900'
                         : 'bg-neutral-100 text-neutral-700'}`}>
@@ -91,9 +91,9 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
    */
   if (haeuser.length < 2) {
     return (
-      <div className="flex items-center gap-2 text-sm" title={t('haus.label')}>
+      <div className="flex min-w-0 items-center gap-2 text-sm" title={t('haus.label')}>
         <Kuerzel haus={haus} />
-        <span className="max-w-48 truncate text-neutral-700">{haus.name}</span>
+        <span className="min-w-0 max-w-48 truncate text-neutral-700">{haus.name}</span>
       </div>
     )
   }
@@ -113,15 +113,15 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0">
       <button type="button" onClick={() => setOffen(o => !o)}
               aria-label={t('haus.label')} aria-haspopup="menu" aria-expanded={offen}
-              className={`flex items-center gap-2 rounded-sm border px-2 py-1 text-sm
+              className={`flex max-w-full items-center gap-2 rounded-sm border px-2 py-1 text-sm
                           ${offen
                             ? 'border-neutral-400 bg-neutral-50'
                             : 'border-neutral-300 hover:bg-neutral-50'}`}>
         <Kuerzel haus={haus} />
-        <span className="max-w-40 truncate">{haus.name}</span>
+        <span className="min-w-0 max-w-40 truncate">{haus.name}</span>
         <span aria-hidden className="text-xs text-neutral-400">▾</span>
       </button>
 

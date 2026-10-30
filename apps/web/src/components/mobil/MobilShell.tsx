@@ -72,11 +72,14 @@ function Rahmen(props: ShellProps): JSX.Element {
             * Im Kopf statt unter "Mehr": die Hausdame wechselt am Telefon
             * mehrmals am Tag hin und her (Sven, 11.10.2026: "erst auf Mehr,
             * dann ganz nach unten, und dann steht da klein Personal-App").
+            * Hoechstens knapp die halbe Breite: auf Russisch oder Griechisch
+            * ist der Name lang, und er lag dann ueber dem Haus daneben.
             */}
           {props.personalApp === true && (
             <a href="/personal"
-               className="shrink-0 whitespace-nowrap rounded-full bg-neutral-900 px-2.5 py-1.5
-                          text-xs font-medium text-white active:bg-neutral-700">
+               className="max-w-[45%] shrink-0 truncate whitespace-nowrap rounded-full
+                          bg-neutral-900 px-2.5 py-1.5 text-xs font-medium text-white
+                          active:bg-neutral-700">
               {t('shell.personalApp')}
             </a>
           )}
@@ -97,7 +100,7 @@ function Rahmen(props: ShellProps): JSX.Element {
       )}
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-neutral-200 bg-white
-                      pb-[env(safe-area-inset-bottom)]">
+                      pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         {vorn.map(v => (
           <Platz key={v.key} aktiv={!mehr && props.screen === v.key}
                  text={t(v.text)} icon={v.icon} onClick={() => waehlen(v.key)} />
@@ -178,7 +181,8 @@ function MehrBlatt({ hinten, onWahl, onClose, screen, ...props }: ShellProps & {
   useEscape(onClose)
   return (
     <div className="fixed inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))]
-                    z-40 overflow-y-auto bg-white">
+                    z-40 overflow-y-auto bg-white pt-[env(safe-area-inset-top)]
+                    pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <div className="space-y-5 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t('nav.more')}</h2>

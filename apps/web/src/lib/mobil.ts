@@ -25,7 +25,18 @@ import { addDays, daysBetween, type IsoDate } from './dates.js'
  */
 export const MOBIL_BIS_PX = 767
 
-const ANFRAGE = `(max-width: ${MOBIL_BIS_PX}px)`
+/**
+ * Unterhalb davon gilt ein Geraet mit Touch als quer gehaltenes Telefon.
+ * Ein iPhone 17 Pro Max ist quer 956 Pixel breit und 440 hoch: nach der
+ * Breite allein bekam es die Kopfleiste des Desktops, die gut tausend Pixel
+ * braucht, und darunter blieben fuer den Bildschirm kaum 300 Pixel. Apple
+ * hat die App genau deshalb abgelehnt (Regel 4, 30.10.2026). Ein Tablet ist
+ * auch quer hoeher als 600; ein Desktopfenster, das man flach zieht, hat
+ * keinen groben Zeiger und bleibt beim Desktop.
+ */
+export const QUER_BIS_PX = 500
+
+const ANFRAGE = `(max-width: ${MOBIL_BIS_PX}px), (max-height: ${QUER_BIS_PX}px) and (pointer: coarse)`
 
 /**
  * Ist das Fenster schmal genug fuer die Mobilansicht?

@@ -59,11 +59,14 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<!--
+	  Am iPhone nur hochkant. Quer bleiben neben Kopf- und Tableiste kaum
+	  300 Punkte fuer die Arbeit, und Apple hat die App dafuer abgelehnt
+	  (Regel 4, 30.10.2026). Das iPad dreht weiter in alle Richtungen.
+	-->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>

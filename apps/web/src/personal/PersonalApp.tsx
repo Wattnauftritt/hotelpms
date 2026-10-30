@@ -359,7 +359,7 @@ function Start({ me, locale, onLocale }: {
       </>}
     </main>
     <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-neutral-200
-                    grid pb-[env(safe-area-inset-bottom)]"
+                    grid pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
          style={{ gridTemplateColumns: `repeat(${reiterListe.length}, minmax(0, 1fr))` }}>
       {reiterListe.map(r => (
         <button key={r} type="button" aria-current={r === reiter ? 'page' : undefined}
