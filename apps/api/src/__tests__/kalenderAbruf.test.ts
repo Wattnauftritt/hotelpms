@@ -333,6 +333,45 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
     expect((await liefern(m, ref, { status: 'progress' })).statusCode).toBe(422)
   })
 
+  it('verwirft eine Lieferung, ohne einen Preis zu schreiben', async () => {
+    await abonnieren()
+    const plan = await ratenplan('DZ-STD')
+    const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
+    const m = await maschine(['rate:channel_sync'])
+    expect((await liefern(m, ref, { status: 'delivered', plans: [
+      { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] }] }] })).statusCode)
+      .toBe(200)
+    const version = (await stand()).pull!.version
+
+    const v = await app.inject({
+      method: 'POST', url: `/v1/properties/${fx.propertyId}/rate-calendar-pulls/${ref}/discard`,
+      headers: auth(admin.sessionId), payload: {} })
+    expect(v.statusCode, v.body).toBe(200)
+    const s = await stand()
+    expect(s.pull?.status).toBe('discarded')
+    expect(s.preview).toBeNull()
+    expect(await preis(plan, VON)).toBeNull()
+
+    // Danach weder uebernehmen noch nachliefern.
+    expect((await uebernehmen(ref, version)).statusCode).toBe(409)
+    expect((await liefern(m, ref, { status: 'delivered', plans: [
+      { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] }] }] })).statusCode)
+      .toBe(409)
+  })
+
+  it('verwirft einen Abruf, auf den nichts mehr kommt, und gibt den Knopf frei', async () => {
+    await abonnieren()
+    const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
+    const v = await app.inject({
+      method: 'POST', url: `/v1/properties/${fx.propertyId}/rate-calendar-pulls/${ref}/discard`,
+      headers: auth(admin.sessionId), payload: {} })
+    expect(v.statusCode, v.body).toBe(200)
+    // Ein verspaetetes Umsystem hoert beim naechsten Zwischenstand auf.
+    const m = await maschine(['rate:channel_sync'])
+    expect((await liefern(m, ref, { status: 'progress', daysDone: 4 })).statusCode).toBe(409)
+    expect((await anfordern()).statusCode).toBe(201)
+  })
+
   it('sagt einem ersetzten Abruf per Zwischenstand, dass er aufhoeren kann', async () => {
     await abonnieren()
     const alt = (await anfordern()).json<{ pullRef: string }>().pullRef

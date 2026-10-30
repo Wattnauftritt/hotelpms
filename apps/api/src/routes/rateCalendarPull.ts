@@ -447,6 +447,41 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Den Abruf verwerfen, ohne etwas zu uebernehmen (Migration 0220).
+   *
+   * Fuer eine Lieferung, die aelter ist als das, was hier inzwischen
+   * gepflegt wurde, und fuer einen Abruf, auf den nichts mehr kommt: der
+   * Knopf "Abrufen" bleibt gesperrt, solange einer wartet. Die gelieferten
+   * Tage werden geloescht, nicht nur ausgeblendet; uebernehmen kann sie
+   * danach niemand mehr.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/rate-calendar-pulls/:pullRef/discard',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Preiskalender-Abruf verwerfen',
+    handler: async (req) => {
+      const { propertyId, pullRef } = req.params as { propertyId: string; pullRef: string }
+      const principal = req.principal as Principal
+
+      return tx(req.pool, req, async client => {
+        const a = await abrufLaden(client, `public_ref = $1 AND property_id = $2`,
+          [pullRef, Number(propertyId)], true)
+        if (a === null) throw Errors.notFound('res.rateCalendarPull')
+        if (!['requested', 'delivered', 'failed'].includes(a.status)) {
+          throw Errors.conflict('rateCalendar.closed')
+        }
+        const r = await client.query<Abruf>(
+          `UPDATE rate_calendar_pull
+              SET status = 'discarded', payload = NULL, discarded_at = now(), discarded_by = $2
+            WHERE id = $1 RETURNING ${SPALTEN}`, [a.id, principal.userId])
+        return antwort(r.rows[0]!)
+      })
+    }
+  })
+
+  /**
    * Die Vorschau uebernehmen.
    *
    * Preise ueber `rate_prices_write`, denselben Weg wie die Preispflege:
