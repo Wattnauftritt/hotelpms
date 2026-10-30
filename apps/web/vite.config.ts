@@ -166,8 +166,15 @@ function appRichtlinie(api: string): Plugin {
         // `viewport-fit=cover`: erst damit liefern `env(safe-area-inset-*)`
         // in der App die Raender von Kerbe und Leiste, und die Oberflaeche
         // ruckt sie selbst ein. Im Browser bleibt die Zeile, wie sie ist.
+        //
+        // `maximum-scale=1`: iOS vergroessert die Seite, sobald man ein
+        // Feld mit weniger als 16 Pixeln Schrift antippt, und nimmt das
+        // nie zurueck. Nach der Anmeldung stand die App dann um ein
+        // Siebtel vergroessert und links abgeschnitten da -- genau so hat
+        // Apple sie abgelehnt (Regel 4, 30.10.2026). Im Browser bleibt das
+        // Zoomen erlaubt; dort laesst es sich mit zwei Fingern zuruecknehmen.
         html: html.replace('content="width=device-width, initial-scale=1"',
-                           'content="width=device-width, initial-scale=1, viewport-fit=cover"'),
+                           'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"'),
         tags: [{
           tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
           injectTo: 'head-prepend' as const
