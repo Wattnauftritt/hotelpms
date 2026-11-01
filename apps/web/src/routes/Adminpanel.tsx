@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
-import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
+import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus, useRenameAccount,
          useCreateAccount, usePlatformStaff, useCreateStaff, useSetStaffStatus,
          usePlatformHealth, useUnlockUser, useSendAccessLink, useRevokeSessions,
          useInviteAccountUser, useAddProperty, useAccountSupportSessions,
@@ -660,6 +660,51 @@ function KundenSitzungen({ accountId, accountName }: {
   )
 }
 
+/**
+ * Der Name des Kunden, umbenennbar (Migration 0222). Beim Anlegen landet in
+ * "Name des Kunden" leicht die Inhaberin statt des Betriebs; bis hierher
+ * blieb er dann so stehen.
+ */
+function KundenName({ id, name }: { id: number; name: string }): JSX.Element {
+  const t = useT()
+  const umbenennen = useRenameAccount()
+  const [entwurf, setEntwurf] = useState<string | null>(null)
+
+  if (entwurf === null) {
+    return (
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium">{name}</h2>
+        <button type="button" className={KNOPF_KLEIN} onClick={() => setEntwurf(name)}>
+          {t('admin.accounts.rename')}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <form className="space-y-1"
+          onSubmit={e => {
+            e.preventDefault()
+            umbenennen.mutate({ id, name: entwurf }, { onSuccess: () => setEntwurf(null) })
+          }}>
+      <label className="block">
+        <span className="block text-xs text-neutral-600">{t('admin.field.accountName')}</span>
+        <input required maxLength={200} value={entwurf} autoFocus
+               onChange={e => setEntwurf(e.target.value)} className={FELD} />
+      </label>
+      {umbenennen.isError && <Fehler error={umbenennen.error} />}
+      <div className="flex gap-2">
+        <button type="submit" disabled={umbenennen.isPending || entwurf.trim() === ''}
+                className={KNOPF}>
+          {t('common.save')}
+        </button>
+        <button type="button" className={KNOPF_KLEIN} onClick={() => setEntwurf(null)}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function KundeDetail({ id, onClose, darfSupport }: {
   id: number; onClose: () => void; darfSupport: boolean
 }): JSX.Element {
@@ -686,7 +731,7 @@ function KundeDetail({ id, onClose, darfSupport }: {
     <section className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-medium">{account.name}</h2>
+          <KundenName id={id} name={account.name} />
           {account.legalName !== null && (
             <p className="text-xs text-neutral-600">{account.legalName}</p>
           )}

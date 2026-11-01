@@ -2754,8 +2754,10 @@ export function renderPasskeyAddedNotice(
  */
 export interface SecurityNoticeData {
   userName: string | null
+  /** Nur noch Rueckfall, wenn der Betrieb kein Haus hat. */
   accountName: string
-  propertyName: string | null
+  /** Das Haus des Ereignisses, sonst alle Haeuser des Betriebs. */
+  houseNames: string[]
   actorName: string
   /** Schon in der Ortszeit des Betriebs formatiert. */
   when: string
@@ -2809,11 +2811,15 @@ export function renderSecurityNotice(
   d: SecurityNoticeData, lang: EmailLanguage = 'de'
 ): RenderedEmail {
   const a = NOTICE_ACTION[d.action]
-  const wo = d.propertyName ? ` (${d.propertyName})` : ''
+  const wo = (und: string): string => {
+    const h = d.houseNames.filter(x => x.trim() !== '')
+    if (h.length === 0) return d.accountName
+    return h.length === 1 ? h[0]! : `${h.slice(0, -1).join(', ')} ${und} ${h[h.length - 1]!}`
+  }
   if (lang === 'en') {
     const lines = [
       d.userName ? `Dear ${d.userName},` : 'Hello,',
-      `in ${d.accountName}${wo}, ${d.actorName} has ${a.en} on ${d.when}.`
+      `at ${wo('and')}, ${d.actorName} has ${a.en} on ${d.when}.`
         + (d.hint ? ` Detail: ${d.hint}.` : ''),
       'If this was planned, there is nothing to do.',
       'If nobody in your business did this, sign in as usual, check the '
@@ -2825,7 +2831,7 @@ export function renderSecurityNotice(
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
-    `im Betrieb ${d.accountName}${wo} hat ${d.actorName} am ${d.when} ${a.de}.`
+    `bei ${wo('und')} hat ${d.actorName} am ${d.when} ${a.de}.`
       + (d.hint ? ` Angabe: ${d.hint}.` : ''),
     'War das so geplant, ist nichts zu tun.',
     'Hat das niemand aus Ihrem Betrieb getan, melden Sie sich wie gewohnt an, '

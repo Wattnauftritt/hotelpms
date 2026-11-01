@@ -54,12 +54,21 @@ export async function sicherheitsereignisMelden(
     [e.accountId, e.propertyId ?? null, e.kind, t.kind, t.userId, t.ref,
      herkunft || null, JSON.stringify(e.detail ?? {})])
 
+  /*
+   * Die Haeuser des Betriebs, wenn das Ereignis an keinem haengt: der
+   * Hinweis nennt, was die Leitung kennt. Der Name des Kunden ist der des
+   * Vertragspartners und war beim ersten Mengenalarm (01.11.2026) der Name
+   * der Inhaberin -- in einer Warnmail sah das aus wie ein fremder Betrieb.
+   */
   const namen = (await client.query(
     `SELECT (SELECT display_name FROM app_user WHERE id = $1) AS actor,
             (SELECT name FROM account WHERE id = $2) AS account,
-            (SELECT name FROM property WHERE id = $3) AS property`,
+            (SELECT name FROM property WHERE id = $3) AS property,
+            (SELECT array_agg(name ORDER BY id) FROM property
+              WHERE account_id = $2 AND $3::bigint IS NULL) AS houses`,
     [t.userId, e.accountId, e.propertyId ?? null])).rows[0] as {
-      actor: string | null; account: string | null; property: string | null }
+      actor: string | null; account: string | null; property: string | null
+      houses: string[] | null }
   const wer = namen.actor ?? (t.kind === 'client'
     ? `Maschinenzugang ${t.ref ?? ''}`.trim() : 'StayGrid')
   const wann = new Intl.DateTimeFormat('de-DE', {
@@ -74,7 +83,8 @@ export async function sicherheitsereignisMelden(
     for (const r of empfaenger) {
       const m = renderSecurityNotice({
         userName: r.display_name, accountName: namen.account ?? '',
-        propertyName: namen.property, actorName: wer, when: wann,
+        houseNames: namen.property !== null ? [namen.property] : namen.houses ?? [],
+        actorName: wer, when: wann,
         action: e.kind as SecurityNoticeAction, hint: e.hint ?? null
       }, r.locale === 'de' || r.locale === null ? 'de' : 'en')
       await client.query(

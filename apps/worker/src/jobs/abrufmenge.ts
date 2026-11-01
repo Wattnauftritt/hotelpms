@@ -22,6 +22,7 @@ export const NACHT_MIN = 100
 interface Ausreisser {
   principal_key: string; account_id: number | null; rows_returned: number
   requests: number; baseline: number; origin: string | null; reason: 'volume' | 'night'
+  property_ids: number[]
 }
 
 function taeterAus(key: string): Taeter {
@@ -39,9 +40,10 @@ export async function pruefeAbrufmengen(
       [stunde.toISOString(), MENGE_MIN, MENGE_FAKTOR, NACHT_MIN]))
   for (const a of r.rows) {
     // Im Kontext genau dieses Betriebs: security_event_record schreibt nur
-    // in einen Account, der im Kontext steht.
+    // in einen Account, der im Kontext steht. Mit seinen Haeusern, damit der
+    // Hinweis sie nennen kann (0222).
     const kontext = { accountIds: a.account_id === null ? [] : [a.account_id],
-                      propertyIds: [], userId: null }
+                      propertyIds: a.property_ids.map(Number), userId: null }
     await withTransaction(pool, kontext, c => sicherheitsereignisMelden(c, {
       kind: 'access_volume', accountId: a.account_id,
       detail: { grund: a.reason, datensaetze: a.rows_returned, anfragen: a.requests,

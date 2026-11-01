@@ -55,6 +55,24 @@ describe('Mengenalarm', () => {
       { kind: 'security_notice', to_email: 'direktion@kunde.de' }])
   })
 
+  it('nennt im Hinweis die Haeuser, nicht den Namen des Kunden', async () => {
+    // 01.11.2026: "im Betrieb Hasna Khodeir" -- der Name der Inhaberin aus
+    // dem Kundenkonto sah in der Warnmail aus wie ein fremder Betrieb.
+    await owner.query(`UPDATE account SET name = 'Hasna Khodeir' WHERE id = $1`, [fx.accountId])
+    await owner.query(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city,
+                             country, tax_number)
+       VALUES ($1, 'GH', 'Gaestehaus', 'Hafenstr. 2', '25813', 'Husum', 'DE', '21/815/00123')`,
+      [fx.accountId])
+    await zaehler('client:adminpanel', STUNDE, 20_000)
+    expect(await pruefeAbrufmengen(app, 'sicherheit@staygrid.test', STUNDE)).toBe(1)
+
+    const h = await owner.query<{ body_text: string }>(
+      `SELECT body_text FROM platform_email WHERE kind = 'security_notice'`)
+    expect(h.rows[0]!.body_text).toContain('bei Wattenblick und Gaestehaus hat')
+    expect(h.rows[0]!.body_text).not.toContain('Hasna Khodeir')
+  })
+
   it('schweigt beim gewohnten naechtlichen Abgleich und unter der Mindestmenge', async () => {
     await zaehler('client:adminpanel', vorher(1), 1000)
     await zaehler('client:adminpanel', STUNDE, 1200)
