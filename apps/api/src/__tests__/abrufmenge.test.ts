@@ -81,10 +81,45 @@ describe('Abrufmenge', () => {
     expect(n.rows[0]!.requests).toBe(1)
   })
 
+  it('zaehlt dieselbe Liste und denselben Gast in einer Stunde nur einmal', async () => {
+    // Fehlalarm 01.11.2026: die Meldescheinliste, bei jedem Fensterwechsel
+    // neu geladen, zaehlte jedes Mal alle Zeilen (Migration 0221).
+    const r = await makeUser(owner, { email: 'rezeption@kunde.de',
+      propertyId: fx.propertyId, roleKey: 'reception' })
+    const cookie = `hp_session=${r.sessionId}`
+    const refs: string[] = []
+    for (const n of ['Petersen', 'Hansen', 'Jensen']) {
+      refs.push((await makeGuest(owner, fx.accountId, { lastName: n })).publicRef)
+    }
+    const zaehler = async () => (await owner.query<{ requests: number; rows_returned: number }>(
+      'SELECT requests, rows_returned FROM access_volume')).rows[0]
+    const zaehlerNach = async (anfragen: number) => {
+      for (let i = 0; i < 100; i++) {
+        const z = await zaehler()
+        if (z !== undefined && z.requests >= anfragen) return z
+        await new Promise(res => setTimeout(res, 10))
+      }
+      throw new Error('Zaehler nicht geschrieben')
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const res = await app.inject({ method: 'GET', url: '/v1/guests?q=sen', headers: { cookie } })
+      expect(res.statusCode).toBe(200)
+    }
+    expect(await zaehlerNach(5)).toEqual({ requests: 5, rows_returned: 3 })
+
+    // Ein Einzelabruf zaehlt je Adresse einmal; ein anderer Gast ist neu.
+    await app.inject({ method: 'GET', url: `/v1/guests/${refs[0]}`, headers: { cookie } })
+    await app.inject({ method: 'GET', url: `/v1/guests/${refs[0]}`, headers: { cookie } })
+    await app.inject({ method: 'GET', url: `/v1/guests/${refs[1]}`, headers: { cookie } })
+    expect(await zaehlerNach(8)).toEqual({ requests: 8, rows_returned: 5 })
+  })
+
   it('ist fuer die Anwendung weder lesbar noch beschreibbar', async () => {
     const c = await pool.connect()
     try {
       await expect(c.query('SELECT * FROM access_volume')).rejects.toThrow(/permission denied/)
+      await expect(c.query('SELECT * FROM access_volume_seen')).rejects.toThrow(/permission denied/)
       await expect(c.query(
         `INSERT INTO access_volume (principal_key, hour) VALUES ('user:1', now())`))
         .rejects.toThrow(/permission denied/)
