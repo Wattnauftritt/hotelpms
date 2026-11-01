@@ -63,6 +63,8 @@ interface ZustandZeile {
 
 /** Zustaende eines Kunden. `archived` heisst kein Zugang mehr, nicht "weg". */
 const KONTO_ZUSTAENDE = ['active', 'suspended', 'archived'] as const
+/** Wie `platform_account_rename` (0223). */
+const KUNDENNAME_MAX = 200
 /** Zustaende eines Plattformbenutzers. `invited` vergibt nur die Einladung. */
 const PERSONAL_ZUSTAENDE = ['active', 'disabled'] as const
 
@@ -249,6 +251,33 @@ export function platformRoutes(app: FastifyInstance): void {
         const r = await client.query<{ platform_account_set_status: string }>(
           `SELECT platform_account_set_status($1, $2)`, [id, status])
         return { id, previous: r.rows[0]!.platform_account_set_status, status }
+      })
+    }
+  })
+
+  /*
+   * Den Namen eines Kunden aendern (Migration 0223). Er steht in jedem
+   * Sicherheitshinweis und im Adminpanel; beim Anlegen landet dort leicht die
+   * Inhaberin statt des Betriebs, und bis hierher blieb er dann so.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/platform/accounts/:id/name',
+    permission: 'platform:accounts',
+    summary: 'Namen eines Kunden aendern',
+    handler: async (req) => {
+      const id = kennung(req)
+      const b = (req.body ?? {}) as { name?: unknown }
+      const name = typeof b.name === 'string' ? b.name.trim() : ''
+      if (name.length === 0 || name.length > KUNDENNAME_MAX) {
+        throw Errors.validation({ name: ['field.invalid'] })
+      }
+
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ previous: string | null }>(
+          `SELECT platform_account_rename($1, $2) AS previous`, [id, name])
+        if (r.rows[0]!.previous === null) throw Errors.notFound('platform.accountNotFound')
+        return { id, name }
       })
     }
   })

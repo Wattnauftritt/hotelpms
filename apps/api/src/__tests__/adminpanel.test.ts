@@ -111,6 +111,31 @@ describe('Kundenliste', () => {
   })
 })
 
+describe('Umbenennen', () => {
+  const umbenennen = (id: number, name: unknown, session: string) =>
+    app.inject({ method: 'POST', url: `/v1/platform/accounts/${id}/name`,
+      headers: auth(session), payload: { name } })
+
+  it('aendert den Namen trotz leerem Mandantenkontext', async () => {
+    // Anlass 01.11.2026: in "Name des Kunden" stand die Inhaberin, und der
+    // Name liess sich nirgends mehr aendern (Migration 0223).
+    const r = await umbenennen(fx.accountId, '  Wattenblick GmbH ', admin.sessionId)
+    expect(r.statusCode).toBe(200)
+    const d = (await kunden(admin.sessionId)).json() as { accounts: Array<{ name: string }> }
+    expect(d.accounts[0]!.name).toBe('Wattenblick GmbH')
+  })
+
+  it('weist einen leeren Namen, einen unbekannten Kunden und die Rezeption ab', async () => {
+    expect((await umbenennen(fx.accountId, '   ', admin.sessionId)).statusCode).toBe(422)
+    expect((await umbenennen(fx.accountId, 'x'.repeat(201), admin.sessionId)).statusCode).toBe(422)
+    expect((await umbenennen(999_999, 'Niemand', admin.sessionId)).statusCode).toBe(404)
+    expect((await umbenennen(fx.accountId, 'Gekapert', rezeption.sessionId)).statusCode).toBe(403)
+    const n = await owner.query<{ name: string }>('SELECT name FROM account WHERE id = $1',
+      [fx.accountId])
+    expect(n.rows[0]!.name).toBe('Wattenblick')
+  })
+})
+
 describe('Sperren', () => {
   it('nimmt dem Kunden den Zugriff, ohne seine Daten anzufassen', async () => {
     const r = await zustand(fx.accountId, 'suspended', admin.sessionId)

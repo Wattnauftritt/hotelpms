@@ -111,6 +111,18 @@ export function useSetAccountStatus() {
   })
 }
 
+export function useRenameAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) =>
+      api.post(`/v1/platform/accounts/${id}/name`, { name }),
+    onSuccess: (_r, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-accounts'] })
+      void qc.invalidateQueries({ queryKey: ['platform-account', id] })
+    }
+  })
+}
+
 export function useCreateAccount() {
   const qc = useQueryClient()
   return useMutation({
