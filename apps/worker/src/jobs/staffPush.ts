@@ -110,7 +110,9 @@ export function createWebPushSender(vapid: {
   }
 }
 
-type Art = 'plan' | 'room_free' | 'rework' | 'waived' | 'request'
+// mcp_release (0222): Claude bittet um Klartext. Geht an Plattformpersonal,
+// nicht an eine Kraft im Haus, und fuehrt deshalb ins Adminpanel.
+type Art = 'plan' | 'room_free' | 'rework' | 'waived' | 'request' | 'mcp_release'
 
 interface ClaimedPush {
   id: number
@@ -177,8 +179,9 @@ export function buildPushPayload(
   return {
     title: renderPushText(`${kind}.title` as PushTextKey, locale, werte),
     body: renderPushText(`${kind}.body` as PushTextKey, locale, werte),
-    url: '/personal',
-    tag: kind === 'plan' ? `plan-${params.date ?? ''}` : `${kind}-${params.room ?? ''}`
+    url: kind === 'mcp_release' ? '/' : '/personal',
+    tag: kind === 'plan' ? `plan-${params.date ?? ''}`
+      : kind === 'mcp_release' ? `mcp-${params.code ?? ''}` : `${kind}-${params.room ?? ''}`
   }
 }
 

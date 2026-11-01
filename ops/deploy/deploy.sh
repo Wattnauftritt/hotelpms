@@ -89,6 +89,9 @@ umschalten() {
   # Skript und Regel jetzt in CI aneinander.
   sudo systemctl restart hotelpms-api
   sudo systemctl restart hotelpms-worker
+  # Der Claude-Zugang (Dokument 38) nur, wenn er laeuft: try-restart startet
+  # keinen angehaltenen Dienst. Ein abgeschalteter Zugang bleibt abgeschaltet.
+  sudo systemctl try-restart hotelpms-mcp
 
   # Nicht "gestartet", sondern "antwortet". Ein Dienst, der sofort wieder
   # stirbt, laeuft fuer systemd trotzdem kurz.

@@ -1,5 +1,5 @@
 import { createPool, withTransaction, SYSTEM_CONTEXT, STAPEL_TIMEOUT_MS, serializeLogError,
-         type DbContext, type Pool }
+         konfigurationMelden, type DbContext, type Pool }
   from '@hotelpms/db'
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
@@ -741,6 +741,9 @@ async function kanalTakt(): Promise<void> {
 
 async function main(): Promise<void> {
   log.info('hotelpms Worker gestartet')
+  // Fuer den Claude-Zugang: welche Einstellungen gesetzt sind (Dokument 38).
+  await konfigurationMelden(pool, 'worker')
+    .catch(e => log.warn({ err: e }, 'Konfiguration nicht gemeldet'))
   await pushVorbereiten()
   await tick()
   const interval = setInterval(

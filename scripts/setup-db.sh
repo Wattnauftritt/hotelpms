@@ -13,6 +13,10 @@
 #   HOTELPMS_DB_OWNER_PASSWORD   Kennwort der Eigentuemerrolle
 #   HOTELPMS_DB_APP_PASSWORD     Kennwort der Anwendungsrolle
 #   HOTELPMS_DB_RO_PASSWORD      Kennwort der Leserolle
+#   HOTELPMS_DB_MCP_PASSWORD     Kennwort der Rolle des Claude-Zugangs
+#                                (Dokument 38). Auf einer Maschine am Netz
+#                                freiwillig: ohne sie entsteht die Rolle
+#                                nicht, und der Zugang bleibt aus.
 #   HOTELPMS_DATABASES           Datenbanken, durch Leerzeichen getrennt
 #
 # **Ohne diese Kennwoerter laeuft es nicht mehr durch** (Befund S1).
@@ -50,6 +54,7 @@ if [ "$DEV_VORGABEN" = "1" ]; then
   OWNER_PW="${HOTELPMS_DB_OWNER_PASSWORD:-devowner}"
   APP_PW="${HOTELPMS_DB_APP_PASSWORD:-devapp}"
   RO_PW="${HOTELPMS_DB_RO_PASSWORD:-devro}"
+  MCP_PW="${HOTELPMS_DB_MCP_PASSWORD:-devmcp}"
 else
   fehlend=()
   for name in HOTELPMS_DB_OWNER_PASSWORD HOTELPMS_DB_APP_PASSWORD \
@@ -69,9 +74,10 @@ else
   OWNER_PW="$HOTELPMS_DB_OWNER_PASSWORD"
   APP_PW="$HOTELPMS_DB_APP_PASSWORD"
   RO_PW="$HOTELPMS_DB_RO_PASSWORD"
-  for pw in "$OWNER_PW" "$APP_PW" "$RO_PW"; do
+  MCP_PW="${HOTELPMS_DB_MCP_PASSWORD:-}"
+  for pw in "$OWNER_PW" "$APP_PW" "$RO_PW" "$MCP_PW"; do
     case "$pw" in
-      devowner|devapp|devro)
+      devowner|devapp|devro|devmcp)
         echo "Abgebrochen: ein Entwicklungskennwort ist gesetzt." >&2
         echo "Mit HOTELPMS_ALLOW_DEV_PASSWORDS=1 ist das erlaubt." >&2
         exit 1 ;;
@@ -167,6 +173,15 @@ SQL
 rolle hotelpms_owner    "$OWNER_PW" BYPASSRLS
 rolle hotelpms_app      "$APP_PW"
 rolle hotelpms_readonly "$RO_PW"
+
+# Die Rolle des Claude-Zugangs (Dokument 38, Migration 0222). Kein Recht auf
+# `public`; was sie lesen darf, vergibt `mcp_views_refresh()` nach jeder
+# Migration. pg_read_all_stats fuer Sperren, Verbindungen und die teuersten
+# Abfragen -- deren Text steht dort mit $1 statt Werten.
+if [ -n "${MCP_PW:-}" ]; then
+  rolle hotelpms_mcp "$MCP_PW"
+  echo "GRANT pg_read_all_stats TO hotelpms_mcp;" | psql_stdin
+fi
 
 for db in $DATENBANKEN; do
   vorhanden=$(printf "SELECT 1 FROM pg_database WHERE datname = '%s';\n" "$db" \

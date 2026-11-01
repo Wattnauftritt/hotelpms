@@ -1575,3 +1575,9 @@ Sven, 23.10.2026: „bau das Ticketsystem“ (Konzept im Thread „Ticketsystem 
 - **Grenzen:** 30 Nachrichten je Mensch und Stunde, in der Datenbank gezählt (die allgemeine Ratenbegrenzung erreicht Angemeldete nicht). Betreff, Text, Dateiname und Inhalt der Anhänge stehen in `audit_redaction`. Der Worker löscht geschlossene Tickets 24 Monate nach dem Schließen samt Faden und Anhängen.
 
 Bewusst nicht: Antworten per Mail, Push in der App, Textbausteine, Kennzahlen zur Reaktionszeit. Tests in `apps/api/src/__tests__/tickets.test.ts`.
+
+### Claude-Zugang: lesend ins Livesystem (`0222`) — **gebaut, auf der Maschine einzurichten**
+
+Sven, 01.11.2026: ein Zugang, über den Claude das Livesystem lesend untersucht, „gut abgesichert, damit den kein Angreifer nutzt“. Eigener Dienst `apps/mcp` mit eigener Rolle `hotelpms_mcp`, geschwärzte Sichten im Schema `mcp`, Verbinden über OAuth mit Passkey, Klartext je Haus nur nach Freigabe mit einem Passkey, der genau diese Anfrage unterschreibt, Notschalter und Protokoll im Adminpanel (Reiter Claude-Zugang). Vierzehn Werkzeuge, darunter Buchungs-Lebenslauf, Konsistenzprüfungen, Leistung, Datenbankzustand, Schnittstellen und Vorher/Nachher eines Ausrollens. Alles Weitere in Dokument 38.
+
+**Offen:** Einrichten auf der Maschine (Dokument 38 §5, mit `caddy validate` und dem ersten Start der Unit); eine Löschfrist für `mcp_call`.

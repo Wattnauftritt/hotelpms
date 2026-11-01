@@ -40,7 +40,10 @@ export const PUSH_MAX_ATTEMPTS = 4
  * Nachricht mehr, ein geaenderter Plan fuer morgen schon.
  */
 export function pushTtlSeconds(
-  kind: 'plan' | 'room_free' | 'rework' | 'waived' | 'request'
+  kind: 'plan' | 'room_free' | 'rework' | 'waived' | 'request' | 'mcp_release'
 ): number {
+  // Eine Klartext-Anfrage von Claude ist nach einer Viertelstunde keine
+  // Frage mehr, die jemand beantworten sollte, ohne Claude neu zu fragen.
+  if (kind === 'mcp_release') return 15 * 60
   return kind === 'plan' ? 12 * 3600 : 4 * 3600
 }

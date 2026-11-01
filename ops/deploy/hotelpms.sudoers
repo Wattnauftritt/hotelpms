@@ -6,3 +6,4 @@
 # ist genau der, den ein Angreifer ueber die Anwendung bekommt.
 hotelpms ALL=(root) NOPASSWD: /usr/bin/systemctl restart hotelpms-api
 hotelpms ALL=(root) NOPASSWD: /usr/bin/systemctl restart hotelpms-worker
+hotelpms ALL=(root) NOPASSWD: /usr/bin/systemctl try-restart hotelpms-mcp

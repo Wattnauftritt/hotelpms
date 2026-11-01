@@ -186,3 +186,14 @@ async function imBrowserAnlegen(options: ErstellOptionen): Promise<unknown> {
     }
   }
 }
+
+/**
+ * Klartext fuer Claude freigeben (0222, Dokument 38). Die Herausforderung
+ * haengt an genau dieser Anfrage; eine Unterschrift fuer eine andere
+ * Anfrage oder eine allgemeine Bestaetigung weist die Schnittstelle ab.
+ */
+export async function claudeFreigabeMitPasskey(ref: string): Promise<{ expiresAt: string }> {
+  const r = encodeURIComponent(ref)
+  return passkeyVorlegen(`/v1/platform/mcp/releases/${r}/options`,
+                         `/v1/platform/mcp/releases/${r}/grant`)
+}

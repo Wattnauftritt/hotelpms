@@ -70,7 +70,10 @@ export const PERMISSIONS = [
   // vom ganzen Betrieb zu sehen ist, entscheidet settings:account.
   'support:ticket',
   // Und die Gegenseite: Anfragen aller Kunden bearbeiten.
-  'platform:tickets'
+  'platform:tickets',
+  // Claude-Zugang (0222): verbinden, Klartext freigeben, sperren. Nur
+  // platform_admin, nur mit Passkey-Sitzung wie jedes Plattformrecht.
+  'platform:mcp'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

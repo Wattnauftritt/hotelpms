@@ -1,0 +1,54 @@
+[Unit]
+Description=hotelpms Claude-Zugang (lesend, Dokument 38)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+# Ohne MCP_ENABLED=1 in mcp.env beendet sich der Dienst sofort mit 0. Die
+# Unit darf deshalb aktiviert bleiben; abgeschaltet wird in der Datei, nicht
+# durch Loeschen der Unit. Der schnellere Notschalter ist der im Adminpanel
+# (Reiter Claude-Zugang): er sperrt in der Datenbank und wirkt sofort.
+
+[Service]
+Type=simple
+# Ein eigener, fluechtiger Benutzer und nicht `hotelpms`: dieser Dienst soll
+# /opt/hotelpms/shared/env nicht lesen koennen. Darin stehen die
+# Verbindung der Anwendungsrolle, das Sitzungsgeheimnis und die Schluessel
+# der Anbieter -- alles, was der Zugang ausdruecklich nicht haben soll. Er
+# bekommt nur seine eigene Datei, und die liest systemd als root.
+DynamicUser=true
+# Das Journal lesen, sonst nichts. Die Gruppe darf nur lesen.
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/hotelpms/current
+EnvironmentFile=/opt/hotelpms/shared/mcp.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/hotelpms/current/apps/mcp/dist/server.js
+# on-failure, nicht always: ein abgeschalteter Zugang endet mit 0 und soll
+# nicht alle fuenf Sekunden wieder anlaufen.
+Restart=on-failure
+RestartSec=5
+InaccessiblePaths=-/opt/hotelpms/shared/env -/opt/hotelpms/shared/app-paket.key
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Klein gehalten: der Zugang darf die Rezeption nie verdraengen.
+CPUQuota=50%
+MemoryMax=512M
+IOWeight=20
+
+[Install]
+WantedBy=multi-user.target

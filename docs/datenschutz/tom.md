@@ -61,6 +61,13 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
 - **Support sieht nichts ohne Freigabe.** Plattformpersonal hat einen leeren
   Mandantenkontext. Eine Support-Sitzung wird mit Anlass angefragt, vom Kunden
   befristet freigegeben und ist in jedem Protokolleintrag vermerkt.
+- **Claude-Zugang nur lesend und geschwärzt** (Dokument 38). Eigene
+  Datenbankrolle ohne Schreibrecht, die nur Sichten mit geschwärzten
+  Personenspalten sieht; jede Abfrage `READ ONLY` mit fünf Sekunden Grenze.
+  Erreichbar nur aus dem Netz von Anthropic, verbunden nur mit Passkey,
+  acht Stunden. Klartext je Haus, 60 Minuten, 2000 Zeilen, nach Freigabe
+  mit einem Passkey, der genau diese Anfrage unterschreibt. Jeder Aufruf
+  unveränderlich protokolliert, Notschalter im Adminpanel.
 
 ### 1.4 Trennungskontrolle
 

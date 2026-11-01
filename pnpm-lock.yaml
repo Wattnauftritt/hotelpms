@@ -70,6 +70,28 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  apps/mcp:
+    dependencies:
+      '@hotelpms/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      fastify:
+        specifier: ^5.12.5
+        version: 5.12.5
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.2
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   apps/mobile:
     dependencies:
       '@capacitor/android':

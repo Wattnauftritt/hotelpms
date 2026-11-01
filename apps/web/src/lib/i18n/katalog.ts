@@ -40,6 +40,7 @@ import { verkaufenAls } from './verkaufenAls.js'
 import { sicherheit } from './sicherheit.js'
 import { passkey } from './passkey.js'
 import { tickets } from './tickets.js'
+import { mcp } from './mcp.js'
 
 /**
  * Der ganze Katalog der Oberflaeche, alle Sprachen je Schluessel.
@@ -105,6 +106,7 @@ export type TextKey =
   | keyof typeof passkey
   | keyof typeof sicherheit
   | keyof typeof tickets
+  | keyof typeof mcp
 
 export const texts: Record<TextKey, LocalizedText> = {
   ...common,
@@ -147,7 +149,8 @@ export const texts: Record<TextKey, LocalizedText> = {
   ...verkaufenAls,
   ...passkey,
   ...sicherheit,
-  ...tickets
+  ...tickets,
+  ...mcp
 }
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */

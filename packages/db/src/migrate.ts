@@ -44,6 +44,16 @@ export async function migrate(log: (m: string) => void = () => {}): Promise<Migr
         throw new Error(`Migration ${file} fehlgeschlagen: ${(err as Error).message}`)
       }
     }
+    /*
+     * Die Sichten des Claude-Zugangs nach jedem Lauf neu erzeugen (Migration
+     * 0222, Dokument 38), auch ohne neue Migration. Sonst fehlte eine neue
+     * Spalte dort bis zur naechsten Aenderung an 0222 -- also fuer immer --,
+     * und eine Rolle, die erst nach der Migration angelegt wurde, bekaeme
+     * nie ihre Rechte.
+     */
+    const { rows } = await client.query<{ da: boolean }>(
+      `SELECT to_regprocedure('mcp_views_refresh()') IS NOT NULL AS da`)
+    if (rows[0]?.da === true) await client.query('SELECT mcp_views_refresh()')
   } finally {
     await client.end()
   }
