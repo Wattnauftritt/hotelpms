@@ -46,6 +46,7 @@ import { setupRoutes } from './setup.js'
 import { firstSetupRoutes } from './firstSetup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
+import { mcpRoutes } from './mcp.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
 import { depositRequestRoutes } from './depositRequests.js'
 import { webhookRoutes } from './webhooks.js'
@@ -140,6 +141,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   historyRoutes(app)
   searchRoutes(app)
   oauthRoutes(app)
+  mcpRoutes(app)
   paymentsRoutes(app, overrides.payments)
   depositRequestRoutes(app)
   webhookRoutes(app)

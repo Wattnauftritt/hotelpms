@@ -167,6 +167,7 @@ jobs:
       PGPASSWORD: postgres
       TEST_DATABASE_URL: postgres://hotelpms_app:devapp@127.0.0.1:5432/hotelpms_test
       TEST_DATABASE_URL_OWNER: postgres://hotelpms_owner:devowner@127.0.0.1:5432/hotelpms_test
+      TEST_DATABASE_URL_MCP: postgres://hotelpms_mcp:devmcp@127.0.0.1:5432/hotelpms_test
       # Kein DATABASE_URL hier: `packages/testing/src/setup.ts` setzt es aus
       # TEST_DATABASE_URL und weist einen Lauf ab, in dem beide dieselbe
       # Datenbank nennen -- lokal ist DATABASE_URL die Entwicklungsdatenbank.
@@ -182,6 +183,7 @@ jobs:
           psql -c "CREATE ROLE hotelpms_owner LOGIN PASSWORD 'devowner' BYPASSRLS;"
           psql -c "CREATE ROLE hotelpms_app LOGIN PASSWORD 'devapp';"
           psql -c "CREATE ROLE hotelpms_readonly LOGIN PASSWORD 'devro';"
+          psql -c "CREATE ROLE hotelpms_mcp LOGIN PASSWORD 'devmcp'; GRANT pg_read_all_stats TO hotelpms_mcp;"
           psql -c "CREATE DATABASE hotelpms_test OWNER hotelpms_owner;"
           psql -d hotelpms_test -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION pgcrypto;"
       - run: pnpm install --frozen-lockfile

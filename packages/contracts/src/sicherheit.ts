@@ -13,7 +13,9 @@ export const SECURITY_EVENT_KINDS = [
   'platform_role_changed', 'payment_provider_changed',
   'confirmation_failed', 'login_new_device',
   'access_volume', 'honeytoken', 'platform_passkey_changed',
-  'client_origin_denied'
+  'client_origin_denied',
+  // Claude-Zugang (Migration 0222, Dokument 38).
+  'mcp_connected', 'mcp_release_requested', 'mcp_release_granted', 'mcp_locked'
 ] as const
 export type SecurityEventKind = (typeof SECURITY_EVENT_KINDS)[number]
 

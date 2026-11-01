@@ -7,6 +7,7 @@ import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
 import { StripeVerbunden, istStripeRueckkehr } from './routes/StripeVerbunden.tsx'
+import { ClaudeVerbinden, istClaudeVerbinden } from './routes/ClaudeVerbinden.tsx'
 import { AdminpanelSeite, Folio, CheckIn } from './screens.js'
 import { Nachladen } from './components/Nachladen.tsx'
 import { ReservationPanel } from './components/ReservationPanel.tsx'
@@ -291,6 +292,16 @@ function App(): JSX.Element {
   // der Anmeldung: die Seite reicht den Code mit der Sitzung weiter.
   if (istStripeRueckkehr()) {
     return <Sprache locale={locale}><StripeVerbunden /></Sprache>
+  }
+
+  // Claude verbinden (Dokument 38): claude.ai leitet nach der Anmeldung
+  // hierher. Vor der Wahl des Hauses, denn eine laufende Support-Sitzung
+  // braechte Haeuser mit und fuehrte sonst in die normale Oberflaeche.
+  if (istClaudeVerbinden()) {
+    return <Sprache locale={locale}>
+      <ClaudeVerbinden darf={me.data.isPlatformStaff
+                             && me.data.platformPermissions.includes('platform:mcp')} />
+    </Sprache>
   }
 
   // Das Haus aus der Adresse, sonst das selbst gewaehlte Standardhaus, sonst

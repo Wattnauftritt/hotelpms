@@ -33,7 +33,8 @@ export async function truncateAll(): Promise<void> {
   const { rows } = await client.query<{ tablename: string }>(`
     SELECT tablename FROM pg_tables
      WHERE schemaname = 'public'
-       AND tablename NOT IN ('schema_migration','inventory_error','audit_redaction')
+       AND tablename NOT IN ('schema_migration','inventory_error','audit_redaction',
+                             'mcp_column_class')
        AND tablename NOT LIKE 'audit_log%'`)
   /*
    * Berechtigungskatalog und Systemrollen werden vom TRUNCATE mit geleert --
@@ -85,4 +86,18 @@ export function appPool(max = 20): Pool {
 }
 export function ownerPool(max = 5): Pool {
   return createPool({ kind: 'owner', max, applicationName: 'hotelpms-test-owner' })
+}
+
+/**
+ * Die Verbindung als `hotelpms_mcp`, die Rolle des Claude-Zugangs (0222).
+ * Ohne eigene Variable aus der Testdatenbank abgeleitet: dieselbe Datenbank,
+ * die Rolle mit dem Entwicklungskennwort aus scripts/setup-db.sh.
+ */
+export function mcpDatabaseUrl(): string {
+  const eigene = process.env.TEST_DATABASE_URL_MCP
+  if (eigene) return eigene
+  const u = new URL(process.env.TEST_DATABASE_URL!)
+  u.username = 'hotelpms_mcp'
+  u.password = 'devmcp'
+  return u.toString()
 }

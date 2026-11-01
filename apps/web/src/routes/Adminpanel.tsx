@@ -17,6 +17,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Sicherheitsprotokoll } from '../components/Sicherheitsprotokoll.tsx'
 import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
 import { TicketEingang } from './TicketEingang.tsx'
+import { ClaudeZugang, ClaudeHinweis } from './ClaudeZugang.tsx'
 
 /**
  * Das Adminpanel.
@@ -46,7 +47,7 @@ import { TicketEingang } from './TicketEingang.tsx'
  */
 
 type Reiter = 'tickets' | 'accounts' | 'domains' | 'payments' | 'staff' | 'operations'
-  | 'support' | 'security'
+  | 'support' | 'security' | 'mcp'
 
 const KONTO_ZUSTAND: Record<PlatformAccount['status'], TextKey> = {
   active: 'admin.status.active',
@@ -1332,7 +1333,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
     ['staff', 'admin.tab.staff', 'platform:staff'],
     ['operations', 'admin.tab.operations', 'platform:operations'],
     ['support', 'admin.tab.support', 'platform:support_session'],
-    ['security', 'sicherheit.log.title', 'platform:accounts']
+    ['security', 'sicherheit.log.title', 'platform:accounts'],
+    ['mcp', 'admin.tab.mcp', 'platform:mcp']
   ] as Array<[Reiter, TextKey, string]>)
     .filter(([, , recht]) => platformPermissions.includes(recht))
 
@@ -1369,6 +1371,9 @@ function AbsenderdomainFreigaben(): JSX.Element {
       {platformPermissions.includes('platform:operations') && (
         <LaufenderStand rahmen />
       )}
+
+      {/* Eine Bitte von Claude um Klartext wartet; sie soll in jedem Reiter auffallen. */}
+      {platformPermissions.includes('platform:mcp') && <ClaudeHinweis />}
 
       <div className="flex flex-wrap gap-1 border-b border-neutral-200">
         {reiters.map(([k, label]) => (
@@ -1407,6 +1412,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
       )}
 
       {offen === 'security' && <Sicherheitsprotokoll plattform />}
+
+      {offen === 'mcp' && <ClaudeZugang />}
 
       {offen === 'support' && (
         <div className="space-y-4">

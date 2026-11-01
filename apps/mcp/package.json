@@ -1,0 +1,21 @@
+{
+  "name": "@hotelpms/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@hotelpms/contracts": "workspace:*",
+    "fastify": "^5.12.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2"
+  }
+}
