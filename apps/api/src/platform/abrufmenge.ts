@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Principal } from './context.js'
 import { koederAdressen, koederInWert, koederKennung } from './koeder.js'
@@ -19,11 +20,17 @@ import { koederAdressen, koederInWert, koederKennung } from './koeder.js'
  * Rueckgabewert, bevor er zu JSON wird, und nicht in jedem Handler: der
  * naechste Endpunkt, der Gaeste liefert, kaeme sonst ohne Zaehler dazu,
  * und niemand merkte es.
+ *
+ * **Gezaehlt werden verschiedene Datensaetze, nicht Zeilen** (Migration
+ * 0221). Dieselbe Liste zehnmal zu laden, ist kein zehnfacher Abfluss; am
+ * 01.11.2026 hat genau das einen Alarm ausgeloest. Ein Kennzeichen der
+ * eigenen Oberflaeche haette ihn auch verhindert, aber jeder mit einer
+ * uebernommenen Sitzung schickt es mit.
  */
 
 declare module 'fastify' {
   interface FastifyRequest {
-    abrufZeilen: number | null
+    abrufKennungen: string[] | null
   }
 }
 
@@ -47,6 +54,18 @@ export const GEZAEHLT: ReadonlySet<string> = new Set([
   '/v1/properties/:propertyId/exports/guest-levy'
 ])
 
+/**
+ * Die Listen unter den gezaehlten Routen: ihre Antwort traegt viele
+ * Datensaetze. Alle anderen liefern einen -- einen Gast, eine Reservierung,
+ * eine Exportdatei --, auch wenn darin Listen stecken (Naechte, Posten).
+ */
+export const LISTEN: ReadonlySet<string> = new Set([
+  '/v1/guests',
+  '/v1/properties/:propertyId/reservations',
+  '/v1/properties/:propertyId/registrations',
+  '/v1/properties/:propertyId/search'
+])
+
 /** Der Aufrufer als kurze Kennung; `null` fuer anonym. */
 export function aufrufer(p: Principal | undefined): string | null {
   if (p === undefined) return null
@@ -56,20 +75,27 @@ export function aufrufer(p: Principal | undefined): string | null {
   return null
 }
 
+/** Eine Kennung als vorzeichenbehaftete 64-Bit-Zahl, als Text fuer `bigint[]`. */
+function kennung(text: string): string {
+  return createHash('sha256').update(text).digest().readBigInt64BE(0).toString()
+}
+
 /**
- * Wie viele Datensaetze eine Antwort traegt: eine Liste zaehlt ihre
- * Laenge, ein Objekt die Laengen seiner Listen, sonst eins. Grob, mit
- * Absicht -- gesucht wird der Sprung von zwanzig auf zwanzigtausend, nicht
- * die genaue Zahl.
+ * Die Kennungen der Datensaetze einer Antwort. Eine Liste traegt je Element
+ * eine, gebildet aus dem Inhalt: dasselbe Element zweimal geladen ist eine
+ * Kennung, ein geaendertes eine neue. Ein Einzelabruf traegt eine, gebildet
+ * aus der Adresse -- denselben Gast zweimal zu oeffnen, ist ein Gast.
+ *
+ * Grob, mit Absicht: gesucht wird der Sprung von zwanzig auf zwanzigtausend
+ * verschiedene Gaeste, nicht die genaue Zahl.
  */
-export function datensaetze(payload: unknown): number {
-  if (Array.isArray(payload)) return payload.length
-  if (payload !== null && typeof payload === 'object') {
-    let n = 0
-    for (const v of Object.values(payload)) if (Array.isArray(v)) n += v.length
-    return Math.max(n, 1)
-  }
-  return 1
+export function datensatzKennungen(route: string, adresse: string, payload: unknown): string[] {
+  if (!LISTEN.has(route)) return [kennung(`${route} ${adresse}`)]
+  const elemente: unknown[] = Array.isArray(payload) ? payload
+    : payload !== null && typeof payload === 'object'
+      ? Object.values(payload).flatMap(v => Array.isArray(v) ? v as unknown[] : [])
+      : []
+  return [...new Set(elemente.map(e => kennung(`${route} ${JSON.stringify(e)}`)))]
 }
 
 function gezaehlt(req: FastifyRequest): boolean {
@@ -77,7 +103,7 @@ function gezaehlt(req: FastifyRequest): boolean {
 }
 
 export function abrufmengeAnmelden(app: FastifyInstance): void {
-  app.decorateRequest('abrufZeilen', null)
+  app.decorateRequest('abrufKennungen', null)
 
   /*
    * Nach der Bestimmung des Aufrufers (preValidation), vor dem Handler:
@@ -96,7 +122,7 @@ export function abrufmengeAnmelden(app: FastifyInstance): void {
    */
   app.addHook('preSerialization', async (req, _reply, payload) => {
     if (!gezaehlt(req)) return payload
-    req.abrufZeilen = datensaetze(payload)
+    req.abrufKennungen = datensatzKennungen(req.routeOptions.url ?? '', req.url, payload)
     const adressen = await koederAdressen(req.pool)
     return koederInWert(payload, adressen,
       koederKennung(req.principal as Principal | undefined, 'api'))
@@ -108,8 +134,10 @@ export function abrufmengeAnmelden(app: FastifyInstance): void {
     const wer = aufrufer(p)
     if (wer === null) return
     try {
-      await req.pool.query('SELECT access_volume_add($1, $2, $3, $4::inet)',
-        [wer, p?.accountIds[0] ?? null, req.abrufZeilen ?? 1, req.ip || null])
+      await req.pool.query('SELECT access_volume_add($1, $2, $3::bigint[], $4::inet)',
+        [wer, p?.accountIds[0] ?? null,
+         req.abrufKennungen ?? [kennung(`${req.routeOptions.url ?? ''} ${req.url}`)],
+         req.ip || null])
     } catch (e) {
       // Ein Zaehler, der ausfaellt, darf keine Antwort kosten -- die ist
       // ohnehin schon unterwegs. Aber er soll auffallen.
