@@ -166,6 +166,40 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 			import echte_herkunft
 		}
 	}
+
+	# Der Claude-Zugang (Dokument 38). Der Endpunkt, seine Metadaten und der
+	# Tausch von Code gegen Token nur aus dem Netz, aus dem claude.ai
+	# Verbindungen aufbaut (platform.claude.com/docs/en/api/ip-addresses).
+	# Von anderswo 404, nicht 403: wer sucht, soll nicht erfahren, dass hier
+	# etwas ist. Die Zustimmungsseite /mcp-verbinden ist eine Seite der
+	# Oberflaeche und bleibt offen -- dort steht ein Mensch mit Passkey.
+	#
+	# Das ist die erste Linie, nicht die einzige: ohne Token weist der Dienst
+	# ab, und ohne MCP_ENABLED=1 laeuft er gar nicht (dann 502).
+	#
+	# `remote_ip` und nicht `client_ip`: Caddy steht hier ohne Proxy davor,
+	# die Gegenstelle ist der Aufrufer, und eine mitgeschickte
+	# X-Forwarded-For darf daran nichts aendern.
+	@nicht_claude not remote_ip 160.79.104.0/21
+	handle /mcp {
+		respond @nicht_claude 404
+		reverse_proxy 127.0.0.1:3100 {
+			import echte_herkunft
+		}
+	}
+	handle /.well-known/oauth-* {
+		respond @nicht_claude 404
+		reverse_proxy 127.0.0.1:3100 {
+			import echte_herkunft
+		}
+	}
+	handle /v1/mcp/oauth/* {
+		respond @nicht_claude 404
+		reverse_proxy unix//run/hotelpms/api.sock {
+			import echte_herkunft
+		}
+	}
+
 	handle /openapi.json {
 		reverse_proxy unix//run/hotelpms/api.sock {
 			import echte_herkunft

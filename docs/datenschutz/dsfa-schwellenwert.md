@@ -71,7 +71,8 @@ ohnehin gilt — und der größte Teil davon steht bereits in
 3. **Risiken für die Betroffenen** → mindestens: Offenlegung von
    Aufenthaltsdaten (wer war wann wo), Offenlegung von Ausweismerkmalen,
    unbefugter Zugriff über einen Support-Zugang, Gastpost an den falschen
-   Empfänger.
+   Empfänger, Offenlegung über den Claude-Zugang (Dokument 38: lesend,
+   geschwärzt, Klartext nur nach Freigabe mit Passkey, Empfänger Anthropic).
 4. **Abhilfemaßnahmen** → aus [`tom.md`](tom.md)
 5. **Restrisiko und Bewertung** → ⟨vom Betreiber⟩
 6. ⟨Standpunkt der betroffenen Personen, soweit eingeholt — Art. 35 Abs. 9⟩
@@ -82,3 +83,8 @@ Bei jeder Änderung, die eine neue Datenkategorie einführt, einen neuen
 Empfänger hinzufügt oder eine automatisierte Entscheidung einführt. Die
 Prüfung ist nicht einmalig: sie gilt für die Verarbeitung, die tatsächlich
 stattfindet, und die ändert sich mit dem System.
+
+Zuletzt ausgelöst am 01.11.2026 durch den Claude-Zugang (Dokument 38), einen
+neuen Empfänger. Das Ergebnis in Abschnitt 4 ändert sich dadurch nicht —
+die DSFA ist ohnehin durchzuführen —, aber der Zugang gehört als eigenes
+Risiko hinein (Abschnitt 5, Punkt 3).

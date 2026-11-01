@@ -116,6 +116,7 @@ Rechnungsadresse.
 | netcup | Unterauftragsverarbeiter | zweites Sicherungsziel (Dokument 37): alle Daten, mit `age` verschlüsselt, Schlüssel nicht beim Anbieter | Deutschland |
 | Brevo | Unterauftragsverarbeiter | Empfängeradresse, Name, Nachrichtentext | Frankreich |
 | DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) und die Hausseiten der Gästemappe (Migration 0144) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
+| Anthropic (Claude, Claude-Zugang, Dokument 38) | Unterauftragsverarbeiter, AVV besteht | lesende Abfragen zur Fehlersuche: Kennungen, Beträge, Zeitpunkte, Zustände; personenbezogene Spalten **geschwärzt**. Klartext nur je Haus, 60 Minuten, höchstens 2000 Zeilen, nach Freigabe mit Passkey; bei fremden Betrieben nur mit deren laufender Support-Freigabe. Nie Kennwörter, Token, Unterschriften, Dateien | USA, ⟨Grundlage nach Vertragslage: Data Privacy Framework bzw. SCC⟩ |
 | Push-Dienste der Browserhersteller (Google, Apple, Mozilla, Microsoft) | Übermittlungsweg, keine Verarbeitung im Auftrag: der Inhalt ist Ende-zu-Ende verschlüsselt | Geräteadresse des Telefons; Inhalt (Zimmernummer oder Datum) nur verschlüsselt — **keine** Gastdaten | je nach Hersteller, USA mit Angemessenheitsbeschluss |
 | Channel Manager ⟨Anbieter⟩ | eigenständig | Preise, Verfügbarkeit, Restriktionen, beim Abholen von Buchungen die Kennung der Revision — **keine** Gastdaten. Buchungen mit Gastdaten kommen von dort herein (Kanaladapter, Migration 0198); die Zugangsdaten des Hauses beim Anbieter liegen verschlüsselt | ⟨Land⟩ |
 | Meldebehörde | gesetzlich | Meldedaten | Deutschland |
@@ -130,6 +131,11 @@ Nur über Stripe, soweit dort Verarbeitung außerhalb der EU stattfindet.
 Grundlage: ⟨Angemessenheitsbeschluss EU-US Data Privacy Framework bzw.
 Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 Übermittelt werden Belegnummer und Betrag, keine Gastdaten.
+
+Dazu der Claude-Zugang (Dokument 38), sobald er eingeschaltet ist und
+verbunden wird: Ergebnisse lesender Abfragen gehen an Anthropic. Ohne
+Freigabe geschwärzt; mit Freigabe für ein Haus und eine Stunde im Klartext.
+Grundlage: ⟨wie im AVV mit Anthropic vereinbart eintragen⟩.
 
 ## 7. Löschfristen
 
@@ -152,6 +158,7 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Sicherheitsereignis: IP-Adresse | 180 Tage voll, danach auf das Netz gekürzt (/24, /48) | `security_event_prune()` im Job `purgeExpired` |
 | Sicherheitsereignis | zwei Jahre | `security_event_prune()` |
 | Protokoll der Anwendung (Journal) mit voller IP-Adresse und Aufrufer | 30 Tage | `ops/journald/hotelpms.conf` |
+| Protokoll des Claude-Zugangs (`mcp_call`): Werkzeug, Haus, Zeilenzahl, Abfrage ohne Zeichenketten | ⟨zwei Jahre, wie Sicherheitsereignisse — noch ohne Löschjob⟩ | offen, Dokument 38 §7 |
 | Abrufzähler je Aufrufer und Stunde (`access_volume`) mit voller IP-Adresse | 30 Tage | `access_volume_prune()` im Job `purgeExpired` |
 
 ## 8. Technische und organisatorische Maßnahmen
