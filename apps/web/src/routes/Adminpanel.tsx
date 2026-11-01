@@ -661,7 +661,7 @@ function KundenSitzungen({ accountId, accountName }: {
 }
 
 /**
- * Der Name des Kunden, umbenennbar (Migration 0222). Beim Anlegen landet in
+ * Der Name des Kunden, umbenennbar (Migration 0223). Beim Anlegen landet in
  * "Name des Kunden" leicht die Inhaberin statt des Betriebs; bis hierher
  * blieb er dann so stehen.
  */

@@ -63,7 +63,7 @@ interface ZustandZeile {
 
 /** Zustaende eines Kunden. `archived` heisst kein Zugang mehr, nicht "weg". */
 const KONTO_ZUSTAENDE = ['active', 'suspended', 'archived'] as const
-/** Wie `platform_account_rename` (0222). */
+/** Wie `platform_account_rename` (0223). */
 const KUNDENNAME_MAX = 200
 /** Zustaende eines Plattformbenutzers. `invited` vergibt nur die Einladung. */
 const PERSONAL_ZUSTAENDE = ['active', 'disabled'] as const
@@ -256,7 +256,7 @@ export function platformRoutes(app: FastifyInstance): void {
   })
 
   /*
-   * Den Namen eines Kunden aendern (Migration 0222). Er steht in jedem
+   * Den Namen eines Kunden aendern (Migration 0223). Er steht in jedem
    * Sicherheitshinweis und im Adminpanel; beim Anlegen landet dort leicht die
    * Inhaberin statt des Betriebs, und bis hierher blieb er dann so.
    */

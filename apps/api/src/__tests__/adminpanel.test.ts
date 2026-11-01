@@ -118,7 +118,7 @@ describe('Umbenennen', () => {
 
   it('aendert den Namen trotz leerem Mandantenkontext', async () => {
     // Anlass 01.11.2026: in "Name des Kunden" stand die Inhaberin, und der
-    // Name liess sich nirgends mehr aendern (Migration 0222).
+    // Name liess sich nirgends mehr aendern (Migration 0223).
     const r = await umbenennen(fx.accountId, '  Wattenblick GmbH ', admin.sessionId)
     expect(r.statusCode).toBe(200)
     const d = (await kunden(admin.sessionId)).json() as { accounts: Array<{ name: string }> }

@@ -41,7 +41,7 @@ export async function pruefeAbrufmengen(
   for (const a of r.rows) {
     // Im Kontext genau dieses Betriebs: security_event_record schreibt nur
     // in einen Account, der im Kontext steht. Mit seinen Haeusern, damit der
-    // Hinweis sie nennen kann (0222).
+    // Hinweis sie nennen kann (0223).
     const kontext = { accountIds: a.account_id === null ? [] : [a.account_id],
                       propertyIds: a.property_ids.map(Number), userId: null }
     await withTransaction(pool, kontext, c => sicherheitsereignisMelden(c, {

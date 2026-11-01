@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0222 -- Den Namen eines Kunden aendern; der Mengenalarm kennt die Haeuser.
+-- 0223 -- Den Namen eines Kunden aendern; der Mengenalarm kennt die Haeuser.
 --
 -- Anlass: Sicherheitshinweis vom 01.11.2026 (Thread "Ungewoehnlicher
 -- Gastdatenabruf pruefen"). Die Mail sagte "im Betrieb Hasna Khodeir", weil
@@ -18,7 +18,7 @@
 
 CREATE FUNCTION platform_account_rename(p_account_id bigint, p_name text)
 RETURNS text
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_alt  text;
   v_name text := btrim(coalesce(p_name, ''));
