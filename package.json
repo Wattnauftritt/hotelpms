@@ -7,12 +7,18 @@
     "node": ">=22"
   },
   "_pnpm_overrides": "Geflickte Fassungen erzwingen, wo die Abhaengigkeit sie nicht selbst mitbringt (Befund S3). brace-expansion steckt unter eslint und eslint-plugin-import-x in minimatch, zwei Ebenen tief; ohne diese beiden Zeilen faellt `pnpm audit --audit-level high` in CI. Beide bleiben innerhalb ihrer Hauptversion, damit minimatch 3 und minimatch 10 ihre jeweilige Schnittstelle behalten. fast-uri steckt unter @fastify/ajv-compiler, einmal direkt (4.x) und einmal ueber ajv (3.x); fastify 5.12.5 bringt die geflickte Fassung noch nicht mit (Audit 11.10.2026). Auch hier je Hauptversion eine Zeile, aus demselben Grund.",
+  "_pnpm_auditConfig": "Befristete Ausnahme, Svens Entscheidung vom 17.11.2026: GHSA-fc5q-39xc-vjpf (ReDoS in picomatch <=4.0.7) steckt nur im Lint-Werkzeug (eslint-plugin-import-x > @typescript-eslint/typescript-estree > tinyglobby), nie in der laufenden Anwendung, und eine geflickte Fassung gab es an dem Tag nicht. Sobald picomatch nachzieht: Ausnahme entfernen und, falls noetig, ein Override wie oben eintragen.",
   "pnpm": {
     "overrides": {
       "brace-expansion@<1.1.20": "^1.1.20",
       "brace-expansion@>=4.0.0 <5.0.10": "^5.0.10",
       "fast-uri@>=3.0.0 <3.1.8": "^3.1.8",
       "fast-uri@>=4.0.0 <4.1.5": "^4.1.5"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
     }
   },
   "scripts": {
