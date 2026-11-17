@@ -135,11 +135,12 @@ weist jeden Export nach draußen und jeden Versand hart ab.
   höchstens eine Minute), täglich ein mit `age` verschlüsselter Dump an ein
   zweites Ziel bei einem anderen Anbieter (30 Tage täglich, 12 Monate
   monatlich), ein Abbild der VM für den schnellen Neuaufbau und ein
-  Jahresarchiv mit Object Lock über zehn Jahre.
+  Jahresarchiv mit Object Lock (Governance) über zehn Jahre.
 - **Verschlüsselt, bevor es die Maschine verlässt.** Der Schlüssel des
   täglichen Dumps liegt nicht auf dem Server.
 - **Nicht löschbar vom Server aus.** Schicht 1 mit Versionierung und Object
-  Lock, Schicht 2 nimmt nur an (`rrsync -wo -no-del`), ersetzt keinen
+  Lock; der Schlüssel des Servers darf nur Löschmarker setzen, keine Version
+  entfernen und die Sperre nicht umgehen, und das Archiv sieht er nicht. Schicht 2 nimmt nur an (`rrsync -wo -no-del`), ersetzt keinen
   vorhandenen Satz und nimmt keinen mit erfundenem oder künftigem Datum an,
   der die echten aus der Aufbewahrung drängen könnte.
 - **Wiederherstellungszeit:** Ziel vier Stunden bis zur arbeitenden

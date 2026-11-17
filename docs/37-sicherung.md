@@ -13,7 +13,7 @@ Die Entscheidungen dahinter traf Sven am 15.10.2026, den Speicher am 21.10.2026:
 | 1 | pgBackRest: WAL laufend, sonntags voll, sonst differenziell | plusserver S3 Storage Köln, Bucket `staygrid-pgbackrest`, Object Lock | 2 Vollsicherungen, also 14 bis 21 Tage, jeder Zeitpunkt darin | Ausfall der VM oder des Hosts, missglückte Migration, Bedienfehler. Verlust höchstens eine Minute |
 | 2 | `pg_dump`, Rollen, `/etc`, Umgebungsdatei, Löschliste; mit `age` verschlüsselt | netcup-VPS, nimmt nur an (`rrsync -wo -no-del`) | 30 Tage täglich, 12 Monate monatlich | Fehler in pgBackRest, verlorene Passphrase, gesperrtes plusserver-Konto. Ein Tag Verlust |
 | 3 | `vzdump` der VM 102 | Proxmox-Host | zwei Generationen | Nur schneller Neuaufbau, keine Sicherung im eigentlichen Sinn |
-| 4 | GoBD-Export je Haus und Jahr, mit Belegen und Kassenbuch | plusserver, Bucket `staygrid-archiv`, Object Lock **Compliance** 10 Jahre; dazu offline im Tresor | 10 Jahre | Verlust von Datenbank **und** Sicherungen; StayGrid läuft nicht mehr |
+| 4 | GoBD-Export je Haus und Jahr, mit Belegen und Kassenbuch | plusserver, Bucket `staygrid-archiv`, Object Lock **Governance** 10 Jahre, für den Server unsichtbar; dazu offline im Tresor | 10 Jahre | Verlust von Datenbank **und** Sicherungen; StayGrid läuft nicht mehr |
 
 Die steuerliche Aufbewahrung erfüllt der laufende Bestand, nicht Schicht 1 bis 3 (Dokument 17 §3). Schicht 4 ist der Fall, in dem es den laufenden Bestand nicht mehr gibt.
 
@@ -26,10 +26,10 @@ Die steuerliche Aufbewahrung erfüllt der laufende Bestand, nicht Schicht 1 bis 
 Im plusserver CloudHub:
 
 1. **S3 Storage** bestellen, Variante Standard (ohne Replikation: die zweite Kopie ist Schicht 2 bei netcup, nicht ein zweites Rechenzentrum desselben Anbieters), Region Köln (`de-west-1`).
-2. Einen Zugangsschlüssel (Access Key und Secret Key) erzeugen. Beide gehen auf die Maschine in `/etc/pgbackrest/conf.d/geheim.conf` und in den Passwortspeicher, nie in einen Chat oder eine Mail.
+2. Im Tenant Manager eine Gruppe und einen Benutzer `staygrid-server` anlegen, ohne Verwaltungsrechte und mit einer Gruppenrichtlinie, die nur `staygrid-pgbackrest` kennt und darin `s3:ListBucket`, `s3:ListBucketMultipartUploads`, `s3:GetBucketLocation`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` und `s3:AbortMultipartUpload` erlaubt. **Nicht** `s3:DeleteObjectVersion` und **nicht** `s3:BypassGovernanceRetention`: der Server kann damit nur Löschmarker setzen, keine Version entfernen und die Sperre nicht umgehen, und das Archiv sieht er gar nicht. Für diesen Benutzer einen Zugangsschlüssel (Access Key und Secret Key) erzeugen; beide gehen auf die Maschine in `/etc/pgbackrest/conf.d/geheim.conf` und in den Passwortspeicher, nie in einen Chat oder eine Mail. Der Schlüssel des Hauptkontos bleibt auf Svens Rechner.
 3. Den AVV mit plusserver abschließen und ausgedruckt zu den Unterlagen legen. Ohne ihn ist der Eintrag im Verarbeitungsverzeichnis falsch.
 
-Die Buckets werden **mit der CLI** angelegt, nicht in der Oberfläche: Object Lock lässt sich nur beim Anlegen einschalten, und die Anleitung von plusserver tut es über `--object-lock-enabled-for-bucket`. Ein Bucket ohne Sperre lässt sich nicht nachrüsten, nur neu anlegen und umkopieren. Bucket-Namen sind über alle Kunden von plusserver eindeutig: ist der Name vergeben, einen anderen wählen und in `ops/backup/pgbackrest.conf` eintragen.
+Object Lock lässt sich nur beim Anlegen eines Buckets einschalten, in der Oberfläche des Tenant Managers oder mit der CLI über `--object-lock-enabled-for-bucket` (am 25.10.2026 in der Oberfläche angelegt). Ein Bucket ohne Sperre lässt sich nicht nachrüsten, nur neu anlegen und umkopieren. Bucket-Namen sind über alle Kunden von plusserver eindeutig: ist der Name vergeben, einen anderen wählen und in `ops/backup/pgbackrest.conf` eintragen.
 
 Einmal von einem Rechner mit `aws`-CLI und den Zugangsdaten (`aws configure`, Region `de-west-1`):
 
@@ -47,23 +47,30 @@ done
 aws --endpoint-url $E --region $R s3api get-object-lock-configuration --bucket staygrid-pgbackrest
 aws --endpoint-url $E --region $R s3api get-bucket-versioning --bucket staygrid-pgbackrest
 
-# Schicht 1: jede Version 21 Tage im Compliance-Modus gesperrt. Das ist
+# Schicht 1: jede Version 21 Tage im Governance-Modus gesperrt. Das ist
 # laenger als die Aufbewahrung in pgBackRest. Wer die Zugangsdaten vom Server
 # hat, kann loeschen, aber nur Loeschmarker setzen -- die Versionen bleiben
-# die Frist ueber da. Governance reichte nicht: dieselben Zugangsdaten
-# duerften die Sperre umgehen.
+# die Frist ueber da. Umgehen kann die Sperre nur, wer
+# s3:BypassGovernanceRetention hat; der Server hat es nicht (Schritt 2 oben).
 aws --endpoint-url $E --region $R s3api put-object-lock-configuration \
   --bucket staygrid-pgbackrest --object-lock-configuration '{"ObjectLockEnabled":"Enabled",
-    "Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":21}}}'
+    "Rule":{"DefaultRetention":{"Mode":"GOVERNANCE","Days":21}}}'
 
 # Ueberholte Versionen nach 30 Tagen wegraeumen, sonst waechst der Bucket
-# ohne Ende.
+# ohne Ende: pgBackRest loescht abgelaufene Sicherungen mit DeleteObject, und
+# im versionierten Bucket bleibt die Version hinter dem Loeschmarker liegen.
+# 30 Tage sind laenger als die Sperre, die Regel stoesst nie gegen sie.
+# Leere Loeschmarker gehen mit. Weist plusserver ExpiredObjectDeleteMarker
+# ab, den Teil "Expiration" weglassen.
 aws --endpoint-url $E --region $R s3api put-bucket-lifecycle-configuration \
   --bucket staygrid-pgbackrest --lifecycle-configuration '{"Rules":[{"ID":"alte-versionen",
-    "Status":"Enabled","Filter":{},"NoncurrentVersionExpiration":{"NoncurrentDays":30}}]}'
+    "Status":"Enabled","Filter":{},"NoncurrentVersionExpiration":{"NoncurrentDays":30},
+    "Expiration":{"ExpiredObjectDeleteMarker":true}}]}'
 ```
 
-Die Zugangsdaten gelten für beide Buckets. Das Archiv schützt deshalb nicht die Trennung der Schlüssel, sondern die Sperre im **Compliance**-Modus, die niemand aufheben kann, auch nicht mit diesen Schlüsseln (§6).
+**Warum Governance und nicht Compliance.** Geplant war Compliance, eine Sperre, die niemand aufheben kann. plusserver bietet sie nicht an (Ticket, 30.10.2026): der Vertrag müsste ab der letzten Speicherung noch die volle Frist weiterlaufen. Freigeschaltet ist stattdessen Governance mit bis zu elf Jahren (03.11.2026). Eine Version im Governance-Modus kann vor Ablauf nur löschen, wer ausdrücklich `s3:BypassGovernanceRetention` hat, im Tenant Manager auch jeder mit „Manage all buckets“ und der Hauptzugang. Der Schutz hängt damit an der Trennung der Schlüssel: der Server hat einen eigenen Benutzer ohne dieses Recht und ohne Zugriff aufs Archiv (Schritt 2 oben), der Hauptschlüssel liegt nur auf Svens Rechner und im Passwortspeicher. Gegen einen gestohlenen Hauptschlüssel schützt beim Archiv die Kopie im Tresor, bei Schicht 1 die Schicht 2 bei netcup.
+
+Eine Lebenszyklusregel kommt **nur** an `staygrid-pgbackrest`, nie an das Archiv: dort wird nichts überschrieben oder gelöscht, und eine Regel wäre nur ein Weg, Archivdaten zu verlieren.
 
 Am Archiv wird **keine** Standardsperre gesetzt: die Frist steht an jeder Datei beim Hochladen (§6).
 
@@ -207,7 +214,7 @@ Die Liste kommt aus dem **neuesten** Satz, nicht aus dem zurückgespielten: nur 
 Einmal im Jahr, wenn die Steuerberatung das Jahr abgeschlossen hat, je Haus:
 
 1. In der Oberfläche den GoBD-Export des Kalenderjahres als ZIP holen. Er enthält Rechnungen, Positionen, Zahlungen, Anzahlungsjournal, Kassenbuch, Kassenbelege, Protokoll und alle Belege, beschrieben nach GDPdU. Ein großes Haus bekommt ein Jahr in zwei Teilen, wenn die Belege die Obergrenze je Archiv übersteigen.
-2. Verschlüsseln und hochladen, mit einer Sperre, die auch der Kontoinhaber nicht aufheben kann:
+2. Verschlüsseln und hochladen, mit einer Sperre bis zum Ende der Frist. Hochladen mit dem Hauptschlüssel, denn der Server sieht das Archiv nicht. Governance, weil plusserver Compliance nicht anbietet (§2); aufheben könnte die Sperre nur, wer `s3:BypassGovernanceRetention` hat, und `--bypass-governance-retention` steht in keinem Skript:
 
 ```bash
 age -r age1… -o gobd-2026-haus1.zip.age gobd-2026-haus1.zip
@@ -215,7 +222,7 @@ sha256sum gobd-2026-haus1.zip.age > gobd-2026-haus1.zip.age.sha256
 aws --endpoint-url https://s3.de-west-1.psmanaged.com --region de-west-1 s3api put-object \
   --bucket staygrid-archiv --key 2026/gobd-2026-haus1.zip.age \
   --body gobd-2026-haus1.zip.age \
-  --object-lock-mode COMPLIANCE --object-lock-retain-until-date 2037-01-01T00:00:00Z
+  --object-lock-mode GOVERNANCE --object-lock-retain-until-date 2037-01-01T00:00:00Z
 ```
 
 3. Dieselben Dateien auf einen Datenträger im Tresor.
