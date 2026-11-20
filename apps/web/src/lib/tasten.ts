@@ -89,3 +89,22 @@ export function useEscape(onEscape: () => void, aktiv = true): void {
     }
   }, [aktiv])
 }
+
+/**
+ * Sitzt hier jemand an Maus und Tastatur?
+ *
+ * Gefragt wird, bevor eine Maske den Fokus von sich aus in ein Feld setzt.
+ * Am Rezeptionsrechner ist das der Gewinn: Maske auf, Name tippen, wie es
+ * die Rezeption aus KWHotel gewohnt ist (Sven, 20.11.2026). Auf dem Telefon
+ * oder Tablet waere es ein Schaden: der Fokus holt die Bildschirmtastatur
+ * hoch, sie deckt die halbe Maske zu, und Zimmer und Zeitraum, die man
+ * gerade antippen wollte, sind darunter verschwunden.
+ *
+ * Nach dem Zeiger und nicht nach der Breite: ein schmal gezogenes
+ * Browserfenster hat trotzdem eine Tastatur, ein Tablet quer trotzdem keine.
+ */
+export function hatTastatur(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: fine)').matches
+}
