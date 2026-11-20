@@ -241,3 +241,31 @@ describe('Buchungsmasken schliessen nach dem Anlegen', () => {
     })
   }
 })
+
+/**
+ * Maske auf, Name tippen -- ohne Klick ins Feld davor, wie die Rezeption es
+ * aus KWHotel kennt (Sven, 20.11.2026). Nur bei einer neuen Buchung, und nur
+ * mit Maus und Tastatur: auf dem Telefon holte der Fokus die
+ * Bildschirmtastatur ueber die Maske.
+ */
+describe('Neue Buchung: der Cursor steht im Namensfeld', () => {
+  for (const datei of ['BookingDialog.tsx', 'GroupBookingDialog.tsx']) {
+    it(datei, () => {
+      const quelle = readFileSync(join(SRC, 'components', datei), 'utf8')
+      expect(quelle).toMatch(/<GuestPicker[^>]*\bsofortTippen\b/)
+    })
+  }
+
+  it('setzt den Fokus nur mit feinem Zeiger', () => {
+    const quelle = readFileSync(join(SRC, 'components', 'GuestPicker.tsx'), 'utf8')
+    expect(quelle).toContain('autoFocus={sofortTippen && hatTastatur()}')
+    const tasten = readFileSync(join(SRC, 'lib', 'tasten.ts'), 'utf8')
+    expect(tasten).toContain("matchMedia('(pointer: fine)')")
+  })
+
+  it('erzwingt ihn nicht beim Verlegen oder Check-in', () => {
+    for (const datei of [join('components', 'BuchungVerlegen.tsx'), join('routes', 'CheckIn.tsx')]) {
+      expect(readFileSync(join(SRC, datei), 'utf8')).not.toContain('sofortTippen')
+    }
+  })
+})

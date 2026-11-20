@@ -4,6 +4,7 @@ import { useSearchGuests, useCreateGuest } from '../lib/queries/guests.js'
 import { useT } from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
 import { nameAufteilen, type GastName } from '../lib/gastName.js'
+import { hatTastatur } from '../lib/tasten.js'
 
 /**
  * Gast suchen oder neu anlegen (A6), aus dem Buchungsdialog heraus.
@@ -26,9 +27,22 @@ import { nameAufteilen, type GastName } from '../lib/gastName.js'
  * Moment oft nicht, und mehr zu verlangen hieße, sie zum Erfinden zu
  * bringen.
  */
-export function GuestPicker({ value, onChange, onEingabe }: {
+export function GuestPicker({ value, onChange, onEingabe, sofortTippen = false }: {
   value: Guest | null
   onChange: (guest: Guest | null) => void
+  /**
+   * Steht der Cursor beim Oeffnen schon im Suchfeld?
+   *
+   * Nur in den Masken fuer eine **neue** Buchung: dort ist der Name das,
+   * was als Naechstes getippt wird, und ein Klick ins Feld davor ist ein
+   * Handgriff, den die Rezeption aus KWHotel nicht kennt (Sven,
+   * 20.11.2026). Nur mit Maus und Tastatur (`hatTastatur`) -- auf dem
+   * Telefon holte der Fokus die Bildschirmtastatur ueber die Maske.
+   *
+   * Greift auch nach "Aendern": das Feld kommt neu, und wer den Gast eben
+   * verworfen hat, will den naechsten tippen.
+   */
+  sofortTippen?: boolean
   /**
    * Was gerade im Suchfeld steht. Die Buchungsmasken legen daraus beim
    * Speichern selbst einen Gast an, wenn niemand ausgewählt wurde -- siehe
@@ -72,6 +86,7 @@ export function GuestPicker({ value, onChange, onEingabe }: {
   return (
     <div className="space-y-1">
       <input value={begriff} onChange={e => setBegriff(e.target.value)}
+             autoFocus={sofortTippen && hatTastatur()}
              placeholder={t('guestPicker.placeholder')}
              className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {begriff.trim().length > 0 && begriff.trim().length < 2 && (

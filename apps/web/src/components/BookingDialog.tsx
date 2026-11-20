@@ -314,7 +314,8 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
             */}
           <div className="block text-sm">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-            <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe} />
+            <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe}
+                         sofortTippen />
           </div>
 
           {/* Der Grund steht an der gesperrten Stelle, nicht am Knopf: wer

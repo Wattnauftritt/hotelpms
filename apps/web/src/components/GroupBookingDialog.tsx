@@ -484,7 +484,8 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
               */}
             <div className="block text-sm">
               <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-              <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe} />
+              <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe}
+                           sofortTippen />
               {gast.neu !== null && (
                 <span className="block text-xs text-neutral-500 mt-1">
                   {t('booking.guestWillBeCreated', { name: gastNameAnzeige(gast.neu) })}
